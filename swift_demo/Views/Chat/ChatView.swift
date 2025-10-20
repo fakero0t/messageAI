@@ -6,43 +6,37 @@
 //
 
 import SwiftUI
-import Combine
 
 struct ChatView: View {
     let recipientId: String
     let recipientName: String
+    
+    @StateObject private var viewModel: ChatViewModel
     @State private var messageText = ""
-    @State private var recipientUser: User?
-    @State private var cancellable: AnyCancellable?
+    @FocusState private var isInputFocused: Bool
+    
+    init(recipientId: String, recipientName: String) {
+        self.recipientId = recipientId
+        self.recipientName = recipientName
+        _viewModel = StateObject(wrappedValue: ChatViewModel(recipientId: recipientId))
+    }
     
     var body: some View {
         VStack(spacing: 0) {
-            // Messages list placeholder
-            ScrollView {
-                VStack {
-                    Spacer()
-                    Text("Start chatting with \(recipientName)")
-                        .foregroundColor(.secondary)
-                        .padding()
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            MessageListView(
+                messages: viewModel.messages,
+                currentUserId: viewModel.currentUserId
+            )
+            .contentShape(Rectangle())
+            .onTapGesture {
+                isInputFocused = false
             }
             
-            // Message input
-            HStack(spacing: 12) {
-                TextField("Message", text: $messageText)
-                    .textFieldStyle(.roundedBorder)
-                    .padding(.vertical, 8)
-                
-                Button(action: sendMessage) {
-                    Image(systemName: "arrow.up.circle.fill")
-                        .font(.title2)
-                        .foregroundColor(messageText.isEmpty ? .gray : .blue)
-                }
-                .disabled(messageText.isEmpty)
+            Divider()
+            
+            MessageInputView(text: $messageText) {
+                sendMessage()
             }
-            .padding(.horizontal)
-            .padding(.bottom, 8)
         }
         .navigationTitle(recipientName)
         .navigationBarTitleDisplayMode(.inline)
@@ -51,33 +45,20 @@ struct ChatView: View {
                 VStack(spacing: 2) {
                     Text(recipientName)
                         .font(.headline)
-                    if let user = recipientUser {
-                        OnlineStatusView(isOnline: user.online, lastSeen: user.lastSeen)
-                    }
+                    
+                    OnlineStatusView(
+                        isOnline: viewModel.recipientOnline,
+                        lastSeen: viewModel.recipientLastSeen
+                    )
                 }
             }
-        }
-        .onAppear {
-            subscribeToRecipientStatus()
-        }
-        .onDisappear {
-            cancellable?.cancel()
         }
     }
     
     private func sendMessage() {
         guard !messageText.isEmpty else { return }
-        // Placeholder - will be implemented in later PR
-        print("Sending message: \(messageText)")
+        viewModel.sendMessage(text: messageText)
         messageText = ""
-    }
-    
-    private func subscribeToRecipientStatus() {
-        cancellable = UserService.shared.observeUserStatus(userId: recipientId)
-            .receive(on: DispatchQueue.main)
-            .sink { user in
-                recipientUser = user
-            }
     }
 }
 
