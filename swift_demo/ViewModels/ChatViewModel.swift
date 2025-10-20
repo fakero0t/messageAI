@@ -23,6 +23,8 @@ class ChatViewModel: ObservableObject {
     private let messageService = MessageService.shared
     private let localStorage = LocalStorageService.shared
     private let listenerService = FirestoreListenerService.shared
+    private let queueService = MessageQueueService.shared
+    private let networkMonitor = NetworkMonitor.shared
     private var cancellables = Set<AnyCancellable>()
     
     init(recipientId: String) {
@@ -36,6 +38,7 @@ class ChatViewModel: ObservableObject {
         observeRecipientStatus()
         loadLocalMessages()
         startListening()
+        observeNetwork()
     }
     
     deinit {
@@ -47,24 +50,43 @@ class ChatViewModel: ObservableObject {
         
         let messageId = UUID().uuidString
         
-        // 1. Optimistic insert - show immediately with pending status
+        // Determine initial status based on network
+        let initialStatus: MessageStatus = networkMonitor.isConnected ? .pending : .queued
+        
+        // 1. Optimistic insert - show immediately
         let optimisticMessage = MessageEntity(
             id: messageId,
             conversationId: conversationId,
             senderId: currentUserId,
             text: text,
             timestamp: Date(),
-            status: .pending
+            status: initialStatus
         )
         
         messages.append(optimisticMessage)
         
-        // 2. Send in background
+        // 2. Handle based on network status
+        if networkMonitor.isConnected {
+            sendOnline(messageId: messageId, text: text)
+        } else {
+            sendOffline(messageId: messageId, text: text)
+        }
+    }
+    
+    private func sendOnline(messageId: String, text: String) {
         Task {
             do {
-                // Save to local storage first
+                // Save locally first
+                let message = MessageEntity(
+                    id: messageId,
+                    conversationId: conversationId,
+                    senderId: currentUserId,
+                    text: text,
+                    timestamp: Date(),
+                    status: .pending
+                )
                 try await MainActor.run {
-                    try localStorage.saveMessage(optimisticMessage)
+                    try localStorage.saveMessage(message)
                 }
                 updateMessageStatus(messageId: messageId, status: .sent)
                 
@@ -77,14 +99,50 @@ class ChatViewModel: ObservableObject {
                     recipientId: recipientId
                 )
                 
-                // Status will update to .delivered via Firestore listener
                 print("✅ Message sent successfully")
                 
             } catch {
-                // Mark as failed
+                // If send fails, queue it
+                print("⚠️ Send failed, queueing message: \(error)")
+                updateMessageStatus(messageId: messageId, status: .queued)
+                try? queueService.queueMessage(
+                    id: messageId,
+                    conversationId: conversationId,
+                    text: text
+                )
+            }
+        }
+    }
+    
+    private func sendOffline(messageId: String, text: String) {
+        Task {
+            do {
+                // Save locally with queued status
+                let message = MessageEntity(
+                    id: messageId,
+                    conversationId: conversationId,
+                    senderId: currentUserId,
+                    text: text,
+                    timestamp: Date(),
+                    status: .queued
+                )
+                try await MainActor.run {
+                    try localStorage.saveMessage(message)
+                }
+                
+                // Add to queue
+                try queueService.queueMessage(
+                    id: messageId,
+                    conversationId: conversationId,
+                    text: text
+                )
+                
+                print("📥 Message queued (offline)")
+                
+            } catch {
                 updateMessageStatus(messageId: messageId, status: .failed)
-                errorMessage = "Failed to send message"
-                print("❌ Error sending message: \(error)")
+                errorMessage = "Failed to queue message"
+                print("❌ Failed to queue: \(error)")
             }
         }
     }
@@ -179,6 +237,24 @@ class ChatViewModel: ObservableObject {
                 }
             }
         }
+    }
+    
+    private func observeNetwork() {
+        networkMonitor.$isConnected
+            .sink { [weak self] isConnected in
+                guard let self = self else { return }
+                
+                print(isConnected ? "🌐 Network connected" : "📵 Network disconnected")
+                
+                // Process queue when coming back online
+                if isConnected {
+                    Task {
+                        await self.queueService.processQueue()
+                        self.loadLocalMessages()
+                    }
+                }
+            }
+            .store(in: &cancellables)
     }
     
 }

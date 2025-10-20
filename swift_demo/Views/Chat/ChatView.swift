@@ -23,6 +23,11 @@ struct ChatView: View {
     
     var body: some View {
         VStack(spacing: 0) {
+            // Network status banner
+            NetworkStatusView()
+                .animation(.easeInOut, value: NetworkMonitor.shared.connectionQuality)
+                .animation(.easeInOut, value: MessageQueueService.shared.queueCount)
+            
             MessageListView(
                 messages: viewModel.messages,
                 currentUserId: viewModel.currentUserId,

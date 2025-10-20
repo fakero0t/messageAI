@@ -10,6 +10,7 @@ import Foundation
 enum MessageStatus: String, Codable {
     case pending
     case sent
+    case queued
     case delivered
     case read
     case failed
@@ -18,6 +19,7 @@ enum MessageStatus: String, Codable {
         switch self {
         case .pending: return "Sending..."
         case .sent: return "Sent"
+        case .queued: return "Queued"
         case .delivered: return "Delivered"
         case .read: return "Read"
         case .failed: return "Failed"
@@ -28,6 +30,7 @@ enum MessageStatus: String, Codable {
         switch self {
         case .pending: return "clock"
         case .sent: return "checkmark"
+        case .queued: return "clock.arrow.circlepath"
         case .delivered: return "checkmark.circle"
         case .read: return "checkmark.circle.fill"
         case .failed: return "exclamationmark.circle"

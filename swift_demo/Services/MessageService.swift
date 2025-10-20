@@ -12,9 +12,10 @@ class MessageService {
     static let shared = MessageService()
     private let db = Firestore.firestore()
     private let localStorage = LocalStorageService.shared
-    
+    private let retryService = FirestoreRetryService.shared
+
     private init() {}
-    
+
     func sendToFirestore(
         messageId: String,
         text: String,
@@ -23,26 +24,29 @@ class MessageService {
         recipientId: String
     ) async throws {
         print("☁️ Sending to Firestore: \(messageId)")
-        
-        let messageData: [String: Any] = [
-            "id": messageId,
-            "conversationId": conversationId,
-            "senderId": senderId,
-            "text": text,
-            "timestamp": FieldValue.serverTimestamp(),
-            "status": "delivered",
-            "readBy": [senderId]
-        ]
-        
-        try await db.collection("messages").document(messageId).setData(messageData)
-        print("✅ Sent to Firestore successfully")
-        
-        // Update conversation
-        try await ConversationService.shared.updateConversation(
-            conversationId: conversationId,
-            lastMessage: text,
-            participants: [senderId, recipientId]
-        )
+
+        // Wrap in retry logic for resilience
+        try await retryService.executeWithRetry(policy: .default) {
+            let messageData: [String: Any] = [
+                "id": messageId,
+                "conversationId": conversationId,
+                "senderId": senderId,
+                "text": text,
+                "timestamp": FieldValue.serverTimestamp(),
+                "status": "delivered",
+                "readBy": [senderId]
+            ]
+
+            try await self.db.collection("messages").document(messageId).setData(messageData)
+            print("✅ Sent to Firestore successfully")
+
+            // Update conversation
+            try await ConversationService.shared.updateConversation(
+                conversationId: conversationId,
+                lastMessage: text,
+                participants: [senderId, recipientId]
+            )
+        }
     }
     
     func syncMessageFromFirestore(_ snapshot: MessageSnapshot) async throws {

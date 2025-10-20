@@ -148,9 +148,14 @@ class LocalStorageService {
         return try modelContext.fetch(descriptor)
     }
     
-    func removeQueuedMessage(_ message: QueuedMessageEntity) throws {
-        modelContext.delete(message)
-        try modelContext.save()
+    func removeQueuedMessage(_ messageId: String) throws {
+        let predicate = #Predicate<QueuedMessageEntity> { $0.id == messageId }
+        let descriptor = FetchDescriptor<QueuedMessageEntity>(predicate: predicate)
+        
+        if let message = try modelContext.fetch(descriptor).first {
+            modelContext.delete(message)
+            try modelContext.save()
+        }
     }
     
     func incrementRetryCount(messageId: String) throws {
@@ -162,6 +167,24 @@ class LocalStorageService {
             message.lastRetryTime = Date()
             try modelContext.save()
         }
+    }
+    
+    // MARK: - Crash Recovery Operations
+    
+    func findStaleMessages(olderThan date: Date, statuses: [MessageStatus]) throws -> [MessageEntity] {
+        let statusStrings = statuses.map { $0.rawValue }
+        
+        let predicate = #Predicate<MessageEntity> { message in
+            statusStrings.contains(message.statusRaw) &&
+            message.timestamp < date
+        }
+        
+        let descriptor = FetchDescriptor<MessageEntity>(
+            predicate: predicate,
+            sortBy: [SortDescriptor(\.timestamp)]
+        )
+        
+        return try modelContext.fetch(descriptor)
     }
 }
 
