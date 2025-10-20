@@ -15,39 +15,15 @@ class MessageService {
     
     private init() {}
     
-    func sendMessage(
+    func sendToFirestore(
+        messageId: String,
         text: String,
         conversationId: String,
         senderId: String,
         recipientId: String
-    ) async throws -> String {
-        let messageId = UUID().uuidString
+    ) async throws {
+        print("☁️ Sending to Firestore: \(messageId)")
         
-        print("📤 Sending message: \(text)")
-        
-        // 1. Create message entity for local storage
-        let message = MessageEntity(
-            id: messageId,
-            conversationId: conversationId,
-            senderId: senderId,
-            text: text,
-            timestamp: Date(),
-            status: .pending
-        )
-        
-        // 2. Save to local SwiftData first
-        try await MainActor.run {
-            try localStorage.saveMessage(message)
-            print("💾 Saved to local storage")
-        }
-        
-        // 3. Update status to sent
-        try await MainActor.run {
-            try localStorage.updateMessageStatus(messageId: messageId, status: .sent)
-            print("✅ Status updated to sent")
-        }
-        
-        // 4. Send to Firestore
         let messageData: [String: Any] = [
             "id": messageId,
             "conversationId": conversationId,
@@ -59,23 +35,49 @@ class MessageService {
         ]
         
         try await db.collection("messages").document(messageId).setData(messageData)
-        print("☁️ Sent to Firestore")
+        print("✅ Sent to Firestore successfully")
         
-        // 5. Update local status to delivered
-        try await MainActor.run {
-            try localStorage.updateMessageStatus(messageId: messageId, status: .delivered)
-            print("📬 Status updated to delivered")
-        }
-        
-        // 6. Update conversation
+        // Update conversation
         try await ConversationService.shared.updateConversation(
             conversationId: conversationId,
             lastMessage: text,
             participants: [senderId, recipientId]
         )
-        
-        print("✅ Message sent successfully: \(messageId)")
-        return messageId
+    }
+    
+    func syncMessageFromFirestore(_ snapshot: MessageSnapshot) async throws {
+        try await MainActor.run {
+            do {
+                // Check if message exists locally
+                let exists = try localStorage.messageExists(messageId: snapshot.id)
+                
+                if exists {
+                    // Update existing message
+                    print("🔄 Updating existing message: \(snapshot.id)")
+                    try localStorage.updateMessage(
+                        messageId: snapshot.id,
+                        status: MessageStatus(rawValue: snapshot.status) ?? .delivered,
+                        readBy: snapshot.readBy
+                    )
+                } else {
+                    // Insert new message
+                    print("➕ Inserting new message: \(snapshot.id)")
+                    let message = MessageEntity(
+                        id: snapshot.id,
+                        conversationId: snapshot.conversationId,
+                        senderId: snapshot.senderId,
+                        text: snapshot.text,
+                        timestamp: snapshot.timestamp,
+                        status: MessageStatus(rawValue: snapshot.status) ?? .delivered,
+                        readBy: snapshot.readBy
+                    )
+                    try localStorage.saveMessage(message)
+                }
+            } catch {
+                print("❌ Error syncing message: \(error)")
+                throw error
+            }
+        }
     }
 }
 

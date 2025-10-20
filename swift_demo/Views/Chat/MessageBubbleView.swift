@@ -10,6 +10,8 @@ import SwiftUI
 struct MessageBubbleView: View {
     let message: MessageEntity
     let isFromCurrentUser: Bool
+    let onRetry: () -> Void
+    let onDelete: () -> Void
     
     var body: some View {
         HStack {
@@ -20,8 +22,8 @@ struct MessageBubbleView: View {
             VStack(alignment: isFromCurrentUser ? .trailing : .leading, spacing: 4) {
                 Text(message.text)
                     .padding(12)
-                    .background(isFromCurrentUser ? Color.blue : Color(.systemGray5))
-                    .foregroundColor(isFromCurrentUser ? .white : .primary)
+                    .background(bubbleColor)
+                    .foregroundColor(textColor)
                     .cornerRadius(16)
                 
                 HStack(spacing: 4) {
@@ -30,10 +32,12 @@ struct MessageBubbleView: View {
                         .foregroundColor(.secondary)
                     
                     if isFromCurrentUser {
-                        Image(systemName: message.status.iconName)
-                            .font(.caption2)
-                            .foregroundColor(.secondary)
+                        statusIndicator
                     }
+                }
+                
+                if message.status == .failed && isFromCurrentUser {
+                    FailedMessageActionsView(onRetry: onRetry, onDelete: onDelete)
                 }
             }
             
@@ -43,6 +47,47 @@ struct MessageBubbleView: View {
         }
         .padding(.horizontal)
         .padding(.vertical, 2)
+        .animation(.easeInOut(duration: 0.2), value: message.status)
+    }
+    
+    private var bubbleColor: Color {
+        if message.status == .failed {
+            return Color.red.opacity(0.7)
+        }
+        return isFromCurrentUser ? Color.blue : Color(.systemGray5)
+    }
+    
+    private var textColor: Color {
+        if isFromCurrentUser {
+            return .white
+        }
+        return .primary
+    }
+    
+    @ViewBuilder
+    private var statusIndicator: some View {
+        switch message.status {
+        case .pending:
+            ProgressView()
+                .scaleEffect(0.6)
+                .frame(width: 12, height: 12)
+        case .sent:
+            Image(systemName: "checkmark")
+                .font(.caption2)
+                .foregroundColor(.secondary)
+        case .delivered:
+            Image(systemName: "checkmark.circle")
+                .font(.caption2)
+                .foregroundColor(.secondary)
+        case .read:
+            Image(systemName: "checkmark.circle.fill")
+                .font(.caption2)
+                .foregroundColor(.blue)
+        case .failed:
+            Image(systemName: "exclamationmark.circle.fill")
+                .font(.caption2)
+                .foregroundColor(.red)
+        }
     }
 }
 

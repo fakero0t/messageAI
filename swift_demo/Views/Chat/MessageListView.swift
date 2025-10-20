@@ -10,6 +10,8 @@ import SwiftUI
 struct MessageListView: View {
     let messages: [MessageEntity]
     let currentUserId: String
+    let onRetry: ((String) -> Void)?
+    let onDelete: ((String) -> Void)?
     
     var body: some View {
         ScrollViewReader { proxy in
@@ -33,7 +35,9 @@ struct MessageListView: View {
                         ForEach(messages) { message in
                             MessageBubbleView(
                                 message: message,
-                                isFromCurrentUser: message.senderId == currentUserId
+                                isFromCurrentUser: message.senderId == currentUserId,
+                                onRetry: { onRetry?(message.id) },
+                                onDelete: { onDelete?(message.id) }
                             )
                             .id(message.id)
                         }

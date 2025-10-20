@@ -25,7 +25,13 @@ struct ChatView: View {
         VStack(spacing: 0) {
             MessageListView(
                 messages: viewModel.messages,
-                currentUserId: viewModel.currentUserId
+                currentUserId: viewModel.currentUserId,
+                onRetry: { messageId in
+                    viewModel.retryMessage(messageId: messageId)
+                },
+                onDelete: { messageId in
+                    viewModel.deleteMessage(messageId: messageId)
+                }
             )
             .contentShape(Rectangle())
             .onTapGesture {

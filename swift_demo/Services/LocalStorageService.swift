@@ -56,6 +56,33 @@ class LocalStorageService {
         }
     }
     
+    func updateMessage(messageId: String, status: MessageStatus, readBy: [String]) throws {
+        let predicate = #Predicate<MessageEntity> { $0.id == messageId }
+        let descriptor = FetchDescriptor<MessageEntity>(predicate: predicate)
+        
+        if let message = try modelContext.fetch(descriptor).first {
+            message.status = status
+            message.readBy = readBy
+            try modelContext.save()
+        }
+    }
+    
+    func messageExists(messageId: String) throws -> Bool {
+        let predicate = #Predicate<MessageEntity> { $0.id == messageId }
+        let descriptor = FetchDescriptor<MessageEntity>(predicate: predicate)
+        return try modelContext.fetch(descriptor).first != nil
+    }
+    
+    func deleteMessage(messageId: String) throws {
+        let predicate = #Predicate<MessageEntity> { $0.id == messageId }
+        let descriptor = FetchDescriptor<MessageEntity>(predicate: predicate)
+        
+        if let message = try modelContext.fetch(descriptor).first {
+            modelContext.delete(message)
+            try modelContext.save()
+        }
+    }
+    
     // MARK: - Conversation Operations
     
     func saveConversation(_ conversation: ConversationEntity) throws {
