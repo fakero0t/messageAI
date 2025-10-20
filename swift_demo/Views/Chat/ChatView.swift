@@ -6,11 +6,14 @@
 //
 
 import SwiftUI
+import Combine
 
 struct ChatView: View {
     let recipientId: String
     let recipientName: String
     @State private var messageText = ""
+    @State private var recipientUser: User?
+    @State private var cancellable: AnyCancellable?
     
     var body: some View {
         VStack(spacing: 0) {
@@ -43,6 +46,23 @@ struct ChatView: View {
         }
         .navigationTitle(recipientName)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                VStack(spacing: 2) {
+                    Text(recipientName)
+                        .font(.headline)
+                    if let user = recipientUser {
+                        OnlineStatusView(isOnline: user.online, lastSeen: user.lastSeen)
+                    }
+                }
+            }
+        }
+        .onAppear {
+            subscribeToRecipientStatus()
+        }
+        .onDisappear {
+            cancellable?.cancel()
+        }
     }
     
     private func sendMessage() {
@@ -50,6 +70,14 @@ struct ChatView: View {
         // Placeholder - will be implemented in later PR
         print("Sending message: \(messageText)")
         messageText = ""
+    }
+    
+    private func subscribeToRecipientStatus() {
+        cancellable = UserService.shared.observeUserStatus(userId: recipientId)
+            .receive(on: DispatchQueue.main)
+            .sink { user in
+                recipientUser = user
+            }
     }
 }
 

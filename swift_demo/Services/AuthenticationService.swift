@@ -25,19 +25,70 @@ class AuthenticationService: ObservableObject {
         auth.addStateDidChangeListener { [weak self] _, firebaseUser in
             if let firebaseUser = firebaseUser {
                 self?.loadUserData(userId: firebaseUser.uid)
+                // Start presence tracking
+                PresenceService.shared.startTracking(for: firebaseUser.uid)
             } else {
-                self?.currentUser = nil
+                // Stop presence tracking
+                PresenceService.shared.stopTracking()
+                Task { @MainActor in
+                    self?.currentUser = nil
+                }
             }
         }
     }
     
     private func loadUserData(userId: String) {
         db.collection("users").document(userId).getDocument { [weak self] snapshot, error in
-            guard let data = snapshot?.data(),
-                  let user = try? Firestore.Decoder().decode(User.self, from: data) else {
+            if let error = error {
+                print("Error loading user data: \(error)")
+                // Still set a basic user so auth completes
+                self?.createFallbackUser(userId: userId)
                 return
             }
-            self?.currentUser = user
+            
+            guard let data = snapshot?.data() else {
+                print("No user document found for userId: \(userId) - creating fallback")
+                self?.createFallbackUser(userId: userId)
+                return
+            }
+            
+            guard let user = try? Firestore.Decoder().decode(User.self, from: data) else {
+                print("Failed to decode user data")
+                self?.createFallbackUser(userId: userId)
+                return
+            }
+            
+            Task { @MainActor in
+                self?.currentUser = user
+            }
+        }
+    }
+    
+    private func createFallbackUser(userId: String) {
+        guard let firebaseUser = auth.currentUser else { return }
+        
+        // Create a basic user object so auth can complete
+        let user = User(
+            id: userId,
+            email: firebaseUser.email ?? "unknown@email.com",
+            displayName: firebaseUser.email?.components(separatedBy: "@").first ?? "User",
+            online: true,
+            lastSeen: nil
+        )
+        
+        Task { @MainActor in
+            self.currentUser = user
+        }
+        
+        // Try to create the document in Firestore
+        Task {
+            do {
+                let data = try Firestore.Encoder().encode(user)
+                try await db.collection("users").document(userId).setData(data, merge: true)
+                print("✅ Created user document for \(userId)")
+            } catch {
+                print("⚠️ Failed to create user document: \(error)")
+            }
         }
     }
     
@@ -51,6 +102,7 @@ class AuthenticationService: ObservableObject {
     }
     
     func signOut() throws {
+        PresenceService.shared.stopTracking()
         try auth.signOut()
     }
     

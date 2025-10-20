@@ -55,6 +55,12 @@ struct ProfileView: View {
                         }
                         
                         HStack {
+                            Text("Status")
+                            Spacer()
+                            OnlineStatusView(isOnline: user.online, lastSeen: user.lastSeen)
+                        }
+                        
+                        HStack {
                             Text("User ID")
                             Spacer()
                             Text(user.id)

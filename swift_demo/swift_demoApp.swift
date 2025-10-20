@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftData
 import FirebaseCore
 
 class AppDelegate: NSObject, UIApplicationDelegate {
@@ -30,5 +31,6 @@ struct swift_demoApp: App {
                 LoginView(viewModel: authViewModel)
             }
         }
+        .modelContainer(PersistenceController.shared.container)
     }
 }

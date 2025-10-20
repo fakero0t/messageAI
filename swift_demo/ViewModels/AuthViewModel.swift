@@ -25,6 +25,14 @@ class AuthViewModel: ObservableObject {
         authService.$currentUser
             .map { $0 != nil }
             .assign(to: &$isAuthenticated)
+        
+        // Reset loading state when auth succeeds
+        $isAuthenticated
+            .filter { $0 == true }
+            .sink { [weak self] _ in
+                self?.isLoading = false
+            }
+            .store(in: &cancellables)
     }
     
     func login() async {
@@ -38,11 +46,11 @@ class AuthViewModel: ObservableObject {
         
         do {
             try await authService.signIn(email: email, password: password)
+            // isLoading will be reset by the isAuthenticated listener
         } catch {
             errorMessage = error.localizedDescription
+            isLoading = false
         }
-        
-        isLoading = false
     }
     
     func signup() async {

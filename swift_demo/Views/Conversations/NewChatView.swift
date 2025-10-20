@@ -85,26 +85,33 @@ struct NewChatView: View {
             isLoading = true
             errorMessage = nil
             
+            // Try as user ID first
             do {
-                // Try as user ID first
-                if let user = try? await UserService.shared.fetchUser(byId: userIdOrEmail) {
-                    selectedUser = user
-                    navigateToChat = true
-                    return
-                }
-                
-                // Try as email
-                if let user = try await UserService.shared.fetchUser(byEmail: userIdOrEmail) {
-                    selectedUser = user
-                    navigateToChat = true
-                    return
-                }
-                
-                errorMessage = "User not found"
+                let user = try await UserService.shared.fetchUser(byId: userIdOrEmail)
+                print("✅ Found user by ID: \(user.displayName)")
+                selectedUser = user
+                navigateToChat = true
+                isLoading = false
+                return
             } catch {
-                errorMessage = "Error: \(error.localizedDescription)"
+                print("⚠️ Not found by ID: \(error.localizedDescription)")
             }
             
+            // Try as email
+            do {
+                if let user = try await UserService.shared.fetchUser(byEmail: userIdOrEmail) {
+                    print("✅ Found user by email: \(user.displayName)")
+                    selectedUser = user
+                    navigateToChat = true
+                    isLoading = false
+                    return
+                }
+            } catch {
+                print("⚠️ Error searching by email: \(error.localizedDescription)")
+            }
+            
+            print("❌ User not found for input: \(userIdOrEmail)")
+            errorMessage = "User not found"
             isLoading = false
         }
     }
