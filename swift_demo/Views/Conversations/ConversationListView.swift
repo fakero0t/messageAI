@@ -10,7 +10,27 @@ import SwiftUI
 struct ConversationListView: View {
     @StateObject private var viewModel = ConversationListViewModel()
     @State private var showNewChat = false
-    
+    @State private var pendingNavigation: PendingNavigation?
+    @Binding var conversationToNavigateTo: String?
+
+    struct PendingNavigation: Identifiable, Hashable {
+        let id = UUID()
+        let conversationId: String
+        let user: User
+        
+        func hash(into hasher: inout Hasher) {
+            hasher.combine(id)
+        }
+        
+        static func == (lhs: PendingNavigation, rhs: PendingNavigation) -> Bool {
+            lhs.id == rhs.id
+        }
+    }
+
+    init(conversationToNavigateTo: Binding<String?> = .constant(nil)) {
+        _conversationToNavigateTo = conversationToNavigateTo
+    }
+
     var body: some View {
         NavigationStack {
             Group {
@@ -23,6 +43,31 @@ struct ConversationListView: View {
                 }
             }
             .navigationTitle("Messages")
+            .navigationDestination(for: ConversationWithDetails.self) { conversationDetail in
+                ChatView(
+                    recipientId: conversationDetail.recipientId,
+                    recipientName: conversationDetail.displayName,
+                    conversationId: conversationDetail.conversation.id
+                )
+            }
+            .navigationDestination(for: String.self) { conversationId in
+                // Navigate by conversation ID (from notification)
+                if let conversation = viewModel.conversations.first(where: { $0.conversation.id == conversationId }) {
+                    ChatView(
+                        recipientId: conversation.recipientId,
+                        recipientName: conversation.displayName,
+                        conversationId: conversation.conversation.id
+                    )
+                }
+            }
+            .navigationDestination(item: $pendingNavigation) { pending in
+                // Navigate from new chat
+                ChatView(
+                    recipientId: pending.user.id,
+                    recipientName: pending.user.displayName,
+                    conversationId: pending.conversationId
+                )
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -33,10 +78,21 @@ struct ConversationListView: View {
                 }
             }
             .sheet(isPresented: $showNewChat) {
-                NewChatView()
+                NewChatView { conversationId, user in
+                    // Handle conversation creation
+                    pendingNavigation = PendingNavigation(conversationId: conversationId, user: user)
+                }
             }
             .refreshable {
                 viewModel.loadConversations()
+            }
+            .onChange(of: conversationToNavigateTo) { oldValue, newValue in
+                if let conversationId = newValue {
+                    // Trigger navigation by setting navigation path
+                    // This is a workaround - in production, use proper navigation state management
+                    print("🔔 Should navigate to: \(conversationId)")
+                    conversationToNavigateTo = nil
+                }
             }
         }
     }
@@ -44,13 +100,7 @@ struct ConversationListView: View {
     private var conversationList: some View {
         List {
             ForEach(viewModel.conversations) { conversationDetail in
-                NavigationLink {
-                    ChatView(
-                        recipientId: conversationDetail.recipientId,
-                        recipientName: conversationDetail.displayName,
-                        conversationId: conversationDetail.conversation.id
-                    )
-                } label: {
+                NavigationLink(value: conversationDetail) {
                     ConversationRowView(conversationDetail: conversationDetail)
                 }
             }

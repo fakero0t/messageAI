@@ -13,7 +13,9 @@ struct ChatView: View {
     let conversationId: String?
     
     @StateObject private var viewModel: ChatViewModel
+    @EnvironmentObject private var notificationService: NotificationService
     @State private var messageText = ""
+    @State private var showGroupInfo = false // Added for PR-17
     @FocusState private var isInputFocused: Bool
     @Environment(\.scenePhase) private var scenePhase
     
@@ -31,16 +33,19 @@ struct ChatView: View {
                 .animation(.easeInOut, value: NetworkMonitor.shared.connectionQuality)
                 .animation(.easeInOut, value: MessageQueueService.shared.queueCount)
             
-            MessageListView(
-                messages: viewModel.messages,
-                currentUserId: viewModel.currentUserId,
-                onRetry: { messageId in
-                    viewModel.retryMessage(messageId: messageId)
-                },
-                onDelete: { messageId in
-                    viewModel.deleteMessage(messageId: messageId)
-                }
-            )
+                MessageListView(
+                    messages: viewModel.messages,
+                    currentUserId: viewModel.currentUserId,
+                    getSenderName: { message in // Added for PR-17
+                        viewModel.getSenderName(for: message)
+                    },
+                    onRetry: { messageId in
+                        viewModel.retryMessage(messageId: messageId)
+                    },
+                    onDelete: { messageId in
+                        viewModel.deleteMessage(messageId: messageId)
+                    }
+                )
             .contentShape(Rectangle())
             .onTapGesture {
                 isInputFocused = false
@@ -52,27 +57,59 @@ struct ChatView: View {
                 sendMessage()
             }
         }
-        .navigationTitle(recipientName)
+        .navigationTitle(viewModel.isGroup ? (viewModel.groupName ?? "Group Chat") : recipientName)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .principal) {
-                VStack(spacing: 2) {
-                    Text(recipientName)
-                        .font(.headline)
-                    
-                    OnlineStatusView(
-                        isOnline: viewModel.recipientOnline,
-                        lastSeen: viewModel.recipientLastSeen
-                    )
+                if viewModel.isGroup {
+                    // Group header - tappable to show info
+                    Button {
+                        showGroupInfo = true
+                    } label: {
+                        VStack(spacing: 2) {
+                            Text(viewModel.groupName ?? "Group Chat")
+                                .font(.headline)
+                                .foregroundColor(.primary)
+                            
+                            Text("\(viewModel.participants.count) members")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                } else {
+                    // One-on-one header
+                    VStack(spacing: 2) {
+                        Text(recipientName)
+                            .font(.headline)
+                        
+                        OnlineStatusView(
+                            isOnline: viewModel.recipientOnline,
+                            lastSeen: viewModel.recipientLastSeen
+                        )
+                    }
                 }
+            }
+        }
+        .sheet(isPresented: $showGroupInfo) {
+            if let conversationId = conversationId {
+                GroupInfoView(groupId: conversationId)
             }
         }
         .onAppear {
             viewModel.markMessagesAsRead()
+            // Track that user entered this conversation
+            notificationService.currentConversationId = viewModel.conversationId
+        }
+        .onDisappear {
+            // User left conversation
+            notificationService.currentConversationId = nil
         }
         .onChange(of: scenePhase) { oldPhase, newPhase in
             if newPhase == .active {
                 viewModel.markMessagesAsRead()
+                notificationService.currentConversationId = viewModel.conversationId
+            } else if newPhase == .background || newPhase == .inactive {
+                notificationService.currentConversationId = nil
             }
         }
     }

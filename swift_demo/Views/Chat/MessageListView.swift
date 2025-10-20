@@ -10,6 +10,7 @@ import SwiftUI
 struct MessageListView: View {
     let messages: [MessageEntity]
     let currentUserId: String
+    let getSenderName: ((MessageEntity) -> String?)? // Added for PR-17
     let onRetry: ((String) -> Void)?
     let onDelete: ((String) -> Void)?
     
@@ -38,12 +39,13 @@ struct MessageListView: View {
                                 DateSeparatorView(date: message.timestamp)
                             }
                             
-                            MessageBubbleView(
-                                message: message,
-                                isFromCurrentUser: message.senderId == currentUserId,
-                                onRetry: { onRetry?(message.id) },
-                                onDelete: { onDelete?(message.id) }
-                            )
+                                MessageBubbleView(
+                                    message: message,
+                                    isFromCurrentUser: message.senderId == currentUserId,
+                                    senderName: getSenderName?(message), // Added for PR-17
+                                    onRetry: { onRetry?(message.id) },
+                                    onDelete: { onDelete?(message.id) }
+                                )
                             .id(message.id)
                         }
                     }

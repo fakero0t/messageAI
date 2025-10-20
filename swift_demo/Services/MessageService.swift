@@ -41,10 +41,23 @@ class MessageService {
             print("✅ Sent to Firestore successfully")
 
             // Update conversation
+            // For groups, recipientId will be empty, so get participants from conversation
+            var participants = [senderId]
+            if !recipientId.isEmpty {
+                participants.append(recipientId)
+            } else {
+                // Group chat - get all participants from local storage
+                if let conversation = try? await MainActor.run(body: {
+                    try self.localStorage.fetchConversation(byId: conversationId)
+                }) {
+                    participants = conversation.participantIds
+                }
+            }
+            
             try await ConversationService.shared.updateConversation(
                 conversationId: conversationId,
                 lastMessage: text,
-                participants: [senderId, recipientId]
+                participants: participants
             )
         }
     }

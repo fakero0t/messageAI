@@ -100,13 +100,24 @@ class GroupService {
     func removeParticipant(groupId: String, userId: String, requesterId: String) async throws {
         print("➖ Removing participant \(userId) from group \(groupId)")
         
-        // Verify requester is creator
+        // Allow if:
+        // 1. Requester is removing themselves (leaving group), OR
+        // 2. Requester is the creator removing someone else
+        
         let snapshot = try await db.collection("conversations").document(groupId).getDocument()
         guard let data = snapshot.data(),
-              let createdBy = data["createdBy"] as? String,
-              createdBy == requesterId else {
+              let createdBy = data["createdBy"] as? String else {
+            throw NSError(domain: "GroupService", code: 404, userInfo: [
+                NSLocalizedDescriptionKey: "Group not found"
+            ])
+        }
+        
+        let isSelfRemoval = userId == requesterId
+        let isCreator = createdBy == requesterId
+        
+        guard isSelfRemoval || isCreator else {
             throw NSError(domain: "GroupService", code: 403, userInfo: [
-                NSLocalizedDescriptionKey: "Only group creator can remove participants"
+                NSLocalizedDescriptionKey: "Only group creator can remove other participants"
             ])
         }
         

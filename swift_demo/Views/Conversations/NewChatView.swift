@@ -12,9 +12,10 @@ struct NewChatView: View {
     @State private var userIdOrEmail = ""
     @State private var errorMessage: String?
     @State private var isLoading = false
-    @State private var navigateToChat = false
-    @State private var selectedUser: User?
     @State private var showCreateGroup = false
+    
+    // Callback to notify parent of selected conversation
+    var onConversationCreated: ((String, User) -> Void)?
     
     var body: some View {
         NavigationStack {
@@ -104,11 +105,6 @@ struct NewChatView: View {
                     }
                 }
             }
-            .navigationDestination(isPresented: $navigateToChat) {
-                if let user = selectedUser {
-                    ChatView(recipientId: user.id, recipientName: user.displayName)
-                }
-            }
             .sheet(isPresented: $showCreateGroup) {
                 CreateGroupView()
             }
@@ -163,13 +159,10 @@ struct NewChatView: View {
             
             print("💬 Conversation ready: \(conversationId)")
             
-            selectedUser = user
-            navigateToChat = true
-            isLoading = false
-            
-            // Dismiss after successful navigation setup
-            Task { @MainActor in
-                try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 second delay
+            await MainActor.run {
+                isLoading = false
+                // Notify parent and dismiss
+                onConversationCreated?(conversationId, user)
                 dismiss()
             }
             

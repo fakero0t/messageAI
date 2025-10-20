@@ -10,6 +10,7 @@ import SwiftUI
 struct MessageBubbleView: View {
     let message: MessageEntity
     let isFromCurrentUser: Bool
+    let senderName: String? // Added for PR-17
     let onRetry: () -> Void
     let onDelete: () -> Void
     
@@ -20,6 +21,14 @@ struct MessageBubbleView: View {
             }
             
             VStack(alignment: isFromCurrentUser ? .trailing : .leading, spacing: 4) {
+                // Sender name for group messages (PR-17)
+                if !isFromCurrentUser, let senderName = senderName {
+                    Text(senderName)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .padding(.leading, 4)
+                }
+                
                 Text(message.text)
                     .padding(12)
                     .background(bubbleColor)

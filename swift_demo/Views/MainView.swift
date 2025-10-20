@@ -10,10 +10,11 @@ import SwiftUI
 struct MainView: View {
     @EnvironmentObject var authViewModel: AuthViewModel
     @State private var selectedTab = 0
+    @State private var conversationToNavigateTo: String?
     
     var body: some View {
         TabView(selection: $selectedTab) {
-            ConversationListView()
+            ConversationListView(conversationToNavigateTo: $conversationToNavigateTo)
                 .tabItem {
                     Label("Chats", systemImage: "message")
                 }
@@ -24,6 +25,13 @@ struct MainView: View {
                     Label("Profile", systemImage: "person")
                 }
                 .tag(1)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .navigateToConversation)) { notification in
+            if let conversationId = notification.userInfo?["conversationId"] as? String {
+                print("📲 Navigating to conversation: \(conversationId)")
+                selectedTab = 0 // Switch to Chats tab
+                conversationToNavigateTo = conversationId
+            }
         }
     }
 }

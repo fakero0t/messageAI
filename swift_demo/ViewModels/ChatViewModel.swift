@@ -16,6 +16,11 @@ class ChatViewModel: ObservableObject {
     @Published var errorMessage: String?
     @Published var isSending = false
     
+    // Group-specific
+    @Published var isGroup = false
+    @Published var groupName: String?
+    @Published var participants: [User] = []
+    
     let recipientId: String
     let currentUserId: String
     let conversationId: String
@@ -26,6 +31,8 @@ class ChatViewModel: ObservableObject {
     private let queueService = MessageQueueService.shared
     private let networkMonitor = NetworkMonitor.shared
     private let readReceiptService = ReadReceiptService.shared
+    private let userService = UserService.shared
+    private let notificationService = NotificationService.shared
     private var cancellables = Set<AnyCancellable>()
     
     init(recipientId: String, conversationId: String? = nil) {
@@ -42,15 +49,58 @@ class ChatViewModel: ObservableObject {
             )
         }
         
-        observeRecipientStatus()
+        loadConversationDetails()
         loadLocalMessages()
         startListening()
         observeNetwork()
         markMessagesAsRead()
     }
     
+    private func loadConversationDetails() {
+        Task {
+            do {
+                if let conversation = try? localStorage.fetchConversation(byId: conversationId) {
+                    isGroup = conversation.isGroup
+                    groupName = conversation.groupName
+                    
+                    if isGroup {
+                        // Load all participant details for groups
+                        print("👥 Loading group details for: \(conversationId)")
+                        for participantId in conversation.participantIds {
+                            if let user = try? await userService.fetchUser(byId: participantId) {
+                                participants.append(user)
+                                print("  ✓ Loaded participant: \(user.displayName)")
+                            }
+                        }
+                        print("  Total participants: \(participants.count)")
+                    } else {
+                        // Only observe recipient status for one-on-one chats
+                        await MainActor.run {
+                            observeRecipientStatus()
+                        }
+                    }
+                } else {
+                    // No conversation found in local storage (new chat)
+                    // Assume one-on-one if recipientId is not empty
+                    if !recipientId.isEmpty {
+                        await MainActor.run {
+                            observeRecipientStatus()
+                        }
+                    }
+                }
+            } catch {
+                print("⚠️ Error loading conversation details: \(error)")
+            }
+        }
+    }
+    
     deinit {
         listenerService.stopListening(conversationId: conversationId)
+    }
+    
+    func getSenderName(for message: MessageEntity) -> String? {
+        guard isGroup else { return nil }
+        return participants.first { $0.id == message.senderId }?.displayName
     }
     
     func sendMessage(text: String) {
@@ -241,12 +291,35 @@ class ChatViewModel: ObservableObject {
                     await MainActor.run {
                         self.objectWillChange.send() // Explicitly trigger update
                         self.loadLocalMessages()
+                        
+                        // Trigger notification if message is from someone else
+                        if snapshot.senderId != self.currentUserId {
+                            self.showNotificationForMessage(snapshot)
+                        }
                     }
                 } catch {
                     print("❌ Error syncing message: \(error)")
                 }
             }
         }
+    }
+    
+    private func showNotificationForMessage(_ snapshot: MessageSnapshot) {
+        // Get sender name
+        let senderName: String
+        if isGroup {
+            senderName = participants.first { $0.id == snapshot.senderId }?.displayName ?? "Unknown"
+        } else {
+            senderName = participants.first?.displayName ?? recipientId
+        }
+        
+        // Show notification
+        notificationService.showMessageNotification(
+            conversationId: conversationId,
+            senderName: senderName,
+            messageText: snapshot.text,
+            isGroup: isGroup
+        )
     }
     
     private func observeNetwork() {

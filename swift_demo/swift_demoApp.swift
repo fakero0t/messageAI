@@ -21,18 +21,23 @@ class AppDelegate: NSObject, UIApplicationDelegate {
 struct swift_demoApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var delegate
     @StateObject private var authViewModel = AuthViewModel()
-    
+    @StateObject private var notificationService = NotificationService.shared
+
     init() {
         // Initialize network monitoring
         _ = NetworkMonitor.shared
     }
-    
+
     var body: some Scene {
         WindowGroup {
             if authViewModel.isAuthenticated {
                 MainView()
                     .environmentObject(authViewModel)
+                    .environmentObject(notificationService)
                     .task {
+                        // Request notification permissions
+                        notificationService.requestAuthorization()
+                        
                         // Perform crash recovery and process queue on app launch
                         await performAppLaunchTasks()
                     }
