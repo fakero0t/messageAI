@@ -13,25 +13,37 @@ class ChatViewModel: ObservableObject {
     @Published var messages: [MessageEntity] = []
     @Published var recipientOnline = false
     @Published var recipientLastSeen: Date?
+    @Published var errorMessage: String?
+    @Published var isSending = false
     
     let recipientId: String
     let currentUserId: String
     let conversationId: String
     
+    private let messageService = MessageService.shared
+    private let localStorage = LocalStorageService.shared
     private var cancellables = Set<AnyCancellable>()
     
     init(recipientId: String) {
         self.recipientId = recipientId
         self.currentUserId = AuthenticationService.shared.currentUser?.id ?? ""
-        self.conversationId = Self.generateConversationId(userId1: currentUserId, userId2: recipientId)
+        self.conversationId = ConversationService.shared.generateConversationId(
+            userId1: currentUserId,
+            userId2: recipientId
+        )
         
         observeRecipientStatus()
-        loadMockMessages() // Temporary for testing
+        loadLocalMessages()
     }
     
     func sendMessage(text: String) {
-        // Placeholder - will implement real sending in PR-7
-        let message = MessageEntity(
+        guard !text.isEmpty, !isSending else { return }
+        
+        isSending = true
+        errorMessage = nil
+        
+        // Optimistically add message to UI
+        let tempMessage = MessageEntity(
             id: UUID().uuidString,
             conversationId: conversationId,
             senderId: currentUserId,
@@ -39,13 +51,40 @@ class ChatViewModel: ObservableObject {
             timestamp: Date(),
             status: .pending
         )
-        messages.append(message)
+        messages.append(tempMessage)
         
-        // Simulate status change after a delay
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
-            if let index = self?.messages.firstIndex(where: { $0.id == message.id }) {
-                self?.messages[index].status = .sent
+        Task {
+            do {
+                _ = try await messageService.sendMessage(
+                    text: text,
+                    conversationId: conversationId,
+                    senderId: currentUserId,
+                    recipientId: recipientId
+                )
+                
+                // Reload messages from local storage to get updated status
+                loadLocalMessages()
+                
+            } catch {
+                errorMessage = "Failed to send: \(error.localizedDescription)"
+                print("❌ Error sending message: \(error)")
+                
+                // Remove the optimistic message on failure
+                if let index = messages.firstIndex(where: { $0.id == tempMessage.id }) {
+                    messages.remove(at: index)
+                }
             }
+            
+            isSending = false
+        }
+    }
+    
+    func loadLocalMessages() {
+        do {
+            messages = try localStorage.fetchMessages(for: conversationId)
+            print("📨 Loaded \(messages.count) messages from local storage")
+        } catch {
+            print("⚠️ Error loading local messages: \(error)")
         }
     }
     
@@ -59,49 +98,5 @@ class ChatViewModel: ObservableObject {
             .store(in: &cancellables)
     }
     
-    private func loadMockMessages() {
-        // Create some mock messages for UI testing
-        let mockMessages = [
-            MessageEntity(
-                id: "1",
-                conversationId: conversationId,
-                senderId: recipientId,
-                text: "Hey! How are you?",
-                timestamp: Date().addingTimeInterval(-3600),
-                status: .read
-            ),
-            MessageEntity(
-                id: "2",
-                conversationId: conversationId,
-                senderId: currentUserId,
-                text: "I'm doing great! Thanks for asking.",
-                timestamp: Date().addingTimeInterval(-3500),
-                status: .read
-            ),
-            MessageEntity(
-                id: "3",
-                conversationId: conversationId,
-                senderId: recipientId,
-                text: "That's awesome! What are you working on?",
-                timestamp: Date().addingTimeInterval(-3400),
-                status: .read
-            ),
-            MessageEntity(
-                id: "4",
-                conversationId: conversationId,
-                senderId: currentUserId,
-                text: "Building a messaging app with SwiftUI and Firebase!",
-                timestamp: Date().addingTimeInterval(-3300),
-                status: .delivered
-            )
-        ]
-        
-        messages = mockMessages
-    }
-    
-    static func generateConversationId(userId1: String, userId2: String) -> String {
-        let sorted = [userId1, userId2].sorted()
-        return sorted.joined(separator: "_")
-    }
 }
 
