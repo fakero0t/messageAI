@@ -14,12 +14,14 @@ struct NewChatView: View {
     @State private var isLoading = false
     @State private var navigateToChat = false
     @State private var selectedUser: User?
+    @State private var showCreateGroup = false
     
     var body: some View {
         NavigationStack {
             VStack(spacing: 20) {
+                // One-on-One Chat Section
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Start New Chat")
+                    Text("Start One-on-One Chat")
                         .font(.headline)
                     
                     Text("Enter the user ID or email of the person you want to chat with")
@@ -27,7 +29,8 @@ struct NewChatView: View {
                         .foregroundColor(.secondary)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding()
+                .padding(.horizontal)
+                .padding(.top)
                 
                 TextField("User ID or Email", text: $userIdOrEmail)
                     .textFieldStyle(.roundedBorder)
@@ -61,6 +64,35 @@ struct NewChatView: View {
                 .padding(.horizontal)
                 .disabled(userIdOrEmail.isEmpty || isLoading)
                 
+                // Divider
+                HStack {
+                    Rectangle()
+                        .frame(height: 1)
+                        .foregroundColor(Color(.systemGray4))
+                    Text("OR")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .padding(.horizontal, 8)
+                    Rectangle()
+                        .frame(height: 1)
+                        .foregroundColor(Color(.systemGray4))
+                }
+                .padding()
+                
+                // Group Chat Section
+                Button {
+                    showCreateGroup = true
+                } label: {
+                    Label("Create Group Chat", systemImage: "person.3.fill")
+                        .fontWeight(.semibold)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.green)
+                        .foregroundColor(.white)
+                        .cornerRadius(10)
+                }
+                .padding(.horizontal)
+                
                 Spacer()
             }
             .navigationTitle("New Chat")
@@ -77,6 +109,9 @@ struct NewChatView: View {
                     ChatView(recipientId: user.id, recipientName: user.displayName)
                 }
             }
+            .sheet(isPresented: $showCreateGroup) {
+                CreateGroupView()
+            }
         }
     }
     
@@ -89,9 +124,7 @@ struct NewChatView: View {
             do {
                 let user = try await UserService.shared.fetchUser(byId: userIdOrEmail)
                 print("✅ Found user by ID: \(user.displayName)")
-                selectedUser = user
-                navigateToChat = true
-                isLoading = false
+                await createConversationAndNavigate(with: user)
                 return
             } catch {
                 print("⚠️ Not found by ID: \(error.localizedDescription)")
@@ -101,9 +134,7 @@ struct NewChatView: View {
             do {
                 if let user = try await UserService.shared.fetchUser(byEmail: userIdOrEmail) {
                     print("✅ Found user by email: \(user.displayName)")
-                    selectedUser = user
-                    navigateToChat = true
-                    isLoading = false
+                    await createConversationAndNavigate(with: user)
                     return
                 }
             } catch {
@@ -112,6 +143,39 @@ struct NewChatView: View {
             
             print("❌ User not found for input: \(userIdOrEmail)")
             errorMessage = "User not found"
+            isLoading = false
+        }
+    }
+    
+    private func createConversationAndNavigate(with user: User) async {
+        do {
+            guard let currentUserId = AuthenticationService.shared.currentUser?.id else {
+                errorMessage = "Not logged in"
+                isLoading = false
+                return
+            }
+            
+            // Create or get conversation
+            let conversationId = try await ConversationService.shared.getOrCreateConversation(
+                userId1: currentUserId,
+                userId2: user.id
+            )
+            
+            print("💬 Conversation ready: \(conversationId)")
+            
+            selectedUser = user
+            navigateToChat = true
+            isLoading = false
+            
+            // Dismiss after successful navigation setup
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 second delay
+                dismiss()
+            }
+            
+        } catch {
+            print("❌ Failed to create conversation: \(error)")
+            errorMessage = "Failed to start chat"
             isLoading = false
         }
     }

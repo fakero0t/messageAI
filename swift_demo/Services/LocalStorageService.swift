@@ -114,26 +114,6 @@ class LocalStorageService {
         }
     }
     
-    func incrementUnreadCount(conversationId: String) throws {
-        let predicate = #Predicate<ConversationEntity> { $0.id == conversationId }
-        let descriptor = FetchDescriptor<ConversationEntity>(predicate: predicate)
-        
-        if let conversation = try modelContext.fetch(descriptor).first {
-            conversation.unreadCount += 1
-            try modelContext.save()
-        }
-    }
-    
-    func resetUnreadCount(conversationId: String) throws {
-        let predicate = #Predicate<ConversationEntity> { $0.id == conversationId }
-        let descriptor = FetchDescriptor<ConversationEntity>(predicate: predicate)
-        
-        if let conversation = try modelContext.fetch(descriptor).first {
-            conversation.unreadCount = 0
-            try modelContext.save()
-        }
-    }
-    
     // MARK: - Queued Message Operations
     
     func queueMessage(_ message: QueuedMessageEntity) throws {
@@ -185,6 +165,28 @@ class LocalStorageService {
         )
         
         return try modelContext.fetch(descriptor)
+    }
+    
+    // MARK: - Read Receipt Operations
+    
+    func resetUnreadCount(conversationId: String) throws {
+        let predicate = #Predicate<ConversationEntity> { $0.id == conversationId }
+        let descriptor = FetchDescriptor<ConversationEntity>(predicate: predicate)
+        
+        if let conversation = try modelContext.fetch(descriptor).first {
+            conversation.unreadCount = 0
+            try modelContext.save()
+        }
+    }
+    
+    func incrementUnreadCount(conversationId: String) throws {
+        let predicate = #Predicate<ConversationEntity> { $0.id == conversationId }
+        let descriptor = FetchDescriptor<ConversationEntity>(predicate: predicate)
+        
+        if let conversation = try modelContext.fetch(descriptor).first {
+            conversation.unreadCount += 1
+            try modelContext.save()
+        }
     }
 }
 

@@ -27,7 +27,7 @@ struct MessageBubbleView: View {
                     .cornerRadius(16)
                 
                 HStack(spacing: 4) {
-                    Text(message.timestamp.formatted(date: .omitted, time: .shortened))
+                    Text(message.timestamp.chatTimestamp())
                         .font(.caption2)
                         .foregroundColor(.secondary)
                     
@@ -71,18 +71,26 @@ struct MessageBubbleView: View {
             ProgressView()
                 .scaleEffect(0.6)
                 .frame(width: 12, height: 12)
-        case .sent:
+        case .sent, .queued:
             Image(systemName: "checkmark")
                 .font(.caption2)
                 .foregroundColor(.secondary)
         case .delivered:
-            Image(systemName: "checkmark.circle")
-                .font(.caption2)
-                .foregroundColor(.secondary)
+            // Double checkmark (gray) for delivered but not read
+            HStack(spacing: 1) {
+                Image(systemName: "checkmark")
+                Image(systemName: "checkmark")
+            }
+            .font(.caption2)
+            .foregroundColor(.secondary)
         case .read:
-            Image(systemName: "checkmark.circle.fill")
-                .font(.caption2)
-                .foregroundColor(.blue)
+            // Double checkmark (blue) for read
+            HStack(spacing: 1) {
+                Image(systemName: "checkmark")
+                Image(systemName: "checkmark")
+            }
+            .font(.caption2)
+            .foregroundColor(.blue)
         case .failed:
             Image(systemName: "exclamationmark.circle.fill")
                 .font(.caption2)

@@ -32,7 +32,12 @@ struct MessageListView: View {
                     .padding()
                 } else {
                     LazyVStack(spacing: 8) {
-                        ForEach(messages) { message in
+                        ForEach(Array(messages.enumerated()), id: \.element.id) { index, message in
+                            // Show date separator if different day from previous message
+                            if shouldShowDateSeparator(at: index) {
+                                DateSeparatorView(date: message.timestamp)
+                            }
+                            
                             MessageBubbleView(
                                 message: message,
                                 isFromCurrentUser: message.senderId == currentUserId,
@@ -58,6 +63,15 @@ struct MessageListView: View {
                 }
             }
         }
+    }
+    
+    private func shouldShowDateSeparator(at index: Int) -> Bool {
+        guard index > 0 else { return true } // Always show for first message
+        
+        let currentMessage = messages[index]
+        let previousMessage = messages[index - 1]
+        
+        return !currentMessage.timestamp.isSameDay(as: previousMessage.timestamp)
     }
 }
 

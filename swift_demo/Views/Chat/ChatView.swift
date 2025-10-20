@@ -10,15 +10,18 @@ import SwiftUI
 struct ChatView: View {
     let recipientId: String
     let recipientName: String
+    let conversationId: String?
     
     @StateObject private var viewModel: ChatViewModel
     @State private var messageText = ""
     @FocusState private var isInputFocused: Bool
+    @Environment(\.scenePhase) private var scenePhase
     
-    init(recipientId: String, recipientName: String) {
+    init(recipientId: String, recipientName: String, conversationId: String? = nil) {
         self.recipientId = recipientId
         self.recipientName = recipientName
-        _viewModel = StateObject(wrappedValue: ChatViewModel(recipientId: recipientId))
+        self.conversationId = conversationId
+        _viewModel = StateObject(wrappedValue: ChatViewModel(recipientId: recipientId, conversationId: conversationId))
     }
     
     var body: some View {
@@ -62,6 +65,14 @@ struct ChatView: View {
                         lastSeen: viewModel.recipientLastSeen
                     )
                 }
+            }
+        }
+        .onAppear {
+            viewModel.markMessagesAsRead()
+        }
+        .onChange(of: scenePhase) { oldPhase, newPhase in
+            if newPhase == .active {
+                viewModel.markMessagesAsRead()
             }
         }
     }

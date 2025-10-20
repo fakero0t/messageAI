@@ -25,20 +25,28 @@ class ChatViewModel: ObservableObject {
     private let listenerService = FirestoreListenerService.shared
     private let queueService = MessageQueueService.shared
     private let networkMonitor = NetworkMonitor.shared
+    private let readReceiptService = ReadReceiptService.shared
     private var cancellables = Set<AnyCancellable>()
     
-    init(recipientId: String) {
+    init(recipientId: String, conversationId: String? = nil) {
         self.recipientId = recipientId
         self.currentUserId = AuthenticationService.shared.currentUser?.id ?? ""
-        self.conversationId = ConversationService.shared.generateConversationId(
-            userId1: currentUserId,
-            userId2: recipientId
-        )
+        
+        // Use provided conversationId (for groups) or generate it (for one-on-one)
+        if let conversationId = conversationId {
+            self.conversationId = conversationId
+        } else {
+            self.conversationId = ConversationService.shared.generateConversationId(
+                userId1: currentUserId,
+                userId2: recipientId
+            )
+        }
         
         observeRecipientStatus()
         loadLocalMessages()
         startListening()
         observeNetwork()
+        markMessagesAsRead()
     }
     
     deinit {
@@ -205,7 +213,8 @@ class ChatViewModel: ObservableObject {
     
     func loadLocalMessages() {
         do {
-            messages = try localStorage.fetchMessages(for: conversationId)
+            let fetchedMessages = try localStorage.fetchMessages(for: conversationId)
+            messages = fetchedMessages.map { $0 } // Force new array to trigger SwiftUI update
             print("📨 Loaded \(messages.count) messages from local storage")
         } catch {
             print("⚠️ Error loading local messages: \(error)")
@@ -230,6 +239,7 @@ class ChatViewModel: ObservableObject {
                 do {
                     try await self.messageService.syncMessageFromFirestore(snapshot)
                     await MainActor.run {
+                        self.objectWillChange.send() // Explicitly trigger update
                         self.loadLocalMessages()
                     }
                 } catch {
@@ -255,6 +265,20 @@ class ChatViewModel: ObservableObject {
                 }
             }
             .store(in: &cancellables)
+    }
+    
+    func markMessagesAsRead() {
+        Task {
+            do {
+                try await readReceiptService.markMessagesAsRead(
+                    conversationId: conversationId,
+                    userId: currentUserId
+                )
+                loadLocalMessages()
+            } catch {
+                print("⚠️ Failed to mark messages as read: \(error)")
+            }
+        }
     }
     
 }

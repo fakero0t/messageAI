@@ -52,17 +52,10 @@ class CrashRecoveryService {
     private func findStaleMessages() throws -> [MessageEntity] {
         let thresholdDate = Date().addingTimeInterval(-staleThreshold)
         
-        let predicate = #Predicate<MessageEntity> { message in
-            (message.statusRaw == "pending" || message.statusRaw == "sent") &&
-            message.timestamp < thresholdDate
-        }
-        
-        let descriptor = FetchDescriptor<MessageEntity>(
-            predicate: predicate,
-            sortBy: [SortDescriptor(\.timestamp)]
+        return try localStorage.findStaleMessages(
+            olderThan: thresholdDate,
+            statuses: [.pending, .sent]
         )
-        
-        return try localStorage.modelContext.fetch(descriptor)
     }
     
     /// Recover a single message
