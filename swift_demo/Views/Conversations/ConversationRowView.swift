@@ -41,6 +41,7 @@ struct ConversationRowView: View {
                 HStack {
                     Text(conversationDetail.displayName)
                         .font(.headline)
+                        .fontWeight(hasUnreadMessages ? .bold : .regular)
                         .lineLimit(1)
                     
                     Spacer()
@@ -49,6 +50,7 @@ struct ConversationRowView: View {
                         Text(lastMessageTime.conversationTimestamp())
                             .font(.caption)
                             .foregroundColor(.secondary)
+                            .fontWeight(hasUnreadMessages ? .semibold : .regular)
                     }
                 }
                 
@@ -56,7 +58,8 @@ struct ConversationRowView: View {
                     if let lastMessage = conversationDetail.conversation.lastMessageText {
                         Text(lastMessage)
                             .font(.subheadline)
-                            .foregroundColor(.secondary)
+                            .foregroundColor(hasUnreadMessages ? .primary : .secondary)
+                            .fontWeight(hasUnreadMessages ? .medium : .regular)
                             .lineLimit(1)
                     } else {
                         Text("No messages yet")
@@ -81,6 +84,15 @@ struct ConversationRowView: View {
             }
         }
         .padding(.vertical, 4)
+        .listRowBackground(
+            hasUnreadMessages 
+                ? Color.blue.opacity(0.05) 
+                : Color.clear
+        )
+    }
+    
+    private var hasUnreadMessages: Bool {
+        conversationDetail.conversation.unreadCount > 0
     }
     
     private var avatarColor: Color {

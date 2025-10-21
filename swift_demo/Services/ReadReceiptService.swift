@@ -20,22 +20,38 @@ class ReadReceiptService {
         conversationId: String,
         userId: String
     ) async throws {
+        print("📖 [ReadReceiptService] markMessagesAsRead called")
+        print("   Conversation: \(conversationId)")
+        print("   User: \(userId)")
+        
         // Get messages in conversation
         let messages = try await MainActor.run {
             try localStorage.fetchMessages(for: conversationId)
         }
         
+        print("   Total messages in conversation: \(messages.count)")
+        
         // Filter to only unread messages (not sent by current user, not already read by them)
         let unreadMessages = messages.filter { message in
-            message.senderId != userId && !message.readBy.contains(userId)
+            let isFromOtherUser = message.senderId != userId
+            let notAlreadyRead = !message.readBy.contains(userId)
+            let isUnread = isFromOtherUser && notAlreadyRead
+            
+            if isFromOtherUser {
+                print("   Message \(message.id.prefix(8)): from other user, readBy=\(message.readBy), isUnread=\(isUnread)")
+            }
+            
+            return isUnread
         }
         
+        print("   Unread messages to mark: \(unreadMessages.count)")
+        
         guard !unreadMessages.isEmpty else {
-            print("ℹ️ No unread messages to mark")
+            print("ℹ️ [ReadReceiptService] No unread messages to mark")
             return
         }
         
-        print("📖 Marking \(unreadMessages.count) message(s) as read")
+        print("📖 [ReadReceiptService] Marking \(unreadMessages.count) message(s) as read")
         
         // Batch update Firestore
         let batch = db.batch()

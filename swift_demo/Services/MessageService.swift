@@ -34,7 +34,7 @@ class MessageService {
                 "text": text,
                 "timestamp": FieldValue.serverTimestamp(),
                 "status": "delivered",
-                "readBy": [senderId]
+                "readBy": [] // Empty - recipients will add themselves when they read it
             ]
 
             try await self.db.collection("messages").document(messageId).setData(messageData)
@@ -63,14 +63,19 @@ class MessageService {
     }
     
     func syncMessageFromFirestore(_ snapshot: MessageSnapshot) async throws {
+        print("💾 [MessageService] Starting sync for message: \(snapshot.id)")
+        print("   Text: \(snapshot.text)")
+        print("   Conversation: \(snapshot.conversationId)")
+        
         try await MainActor.run {
             do {
                 // Check if message exists locally
                 let exists = try localStorage.messageExists(messageId: snapshot.id)
+                print("   Exists locally: \(exists)")
                 
                 if exists {
                     // Update existing message
-                    print("🔄 Updating existing message: \(snapshot.id)")
+                    print("🔄 [MessageService] Updating existing message: \(snapshot.id)")
                     try localStorage.updateMessage(
                         messageId: snapshot.id,
                         status: MessageStatus(rawValue: snapshot.status) ?? .delivered,
@@ -78,7 +83,7 @@ class MessageService {
                     )
                 } else {
                     // Insert new message
-                    print("➕ Inserting new message: \(snapshot.id)")
+                    print("➕ [MessageService] Inserting new message: \(snapshot.id)")
                     let message = MessageEntity(
                         id: snapshot.id,
                         conversationId: snapshot.conversationId,
@@ -89,9 +94,10 @@ class MessageService {
                         readBy: snapshot.readBy
                     )
                     try localStorage.saveMessage(message)
+                    print("✅ [MessageService] Message saved successfully")
                 }
             } catch {
-                print("❌ Error syncing message: \(error)")
+                print("❌ [MessageService] Error syncing message: \(error)")
                 throw error
             }
         }

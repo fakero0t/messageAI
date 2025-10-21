@@ -13,25 +13,34 @@ struct MainView: View {
     @State private var conversationToNavigateTo: String?
     
     var body: some View {
-        TabView(selection: $selectedTab) {
-            ConversationListView(conversationToNavigateTo: $conversationToNavigateTo)
-                .tabItem {
-                    Label("Chats", systemImage: "message")
-                }
-                .tag(0)
-            
-            ProfileView()
-                .tabItem {
-                    Label("Profile", systemImage: "person")
-                }
-                .tag(1)
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .navigateToConversation)) { notification in
-            if let conversationId = notification.userInfo?["conversationId"] as? String {
-                print("📲 Navigating to conversation: \(conversationId)")
-                selectedTab = 0 // Switch to Chats tab
-                conversationToNavigateTo = conversationId
+        ZStack {
+            TabView(selection: $selectedTab) {
+                ConversationListView(conversationToNavigateTo: $conversationToNavigateTo)
+                    .tabItem {
+                        Label("Chats", systemImage: "message")
+                    }
+                    .tag(0)
+                
+                ProfileView()
+                    .tabItem {
+                        Label("Profile", systemImage: "person")
+                    }
+                    .tag(1)
             }
+            .onReceive(NotificationCenter.default.publisher(for: .navigateToConversation)) { notification in
+                if let conversationId = notification.userInfo?["conversationId"] as? String {
+                    print("📲 Navigating to conversation: \(conversationId)")
+                    selectedTab = 0 // Switch to Chats tab
+                    conversationToNavigateTo = conversationId
+                }
+            }
+            
+            // In-app notification banner overlay
+            VStack {
+                NotificationBannerView()
+                Spacer()
+            }
+            .allowsHitTesting(true)
         }
     }
 }
@@ -74,6 +83,61 @@ struct ProfileView: View {
                             Text(user.id)
                                 .font(.caption)
                                 .foregroundColor(.secondary)
+                        }
+                    }
+                }
+                
+                Section {
+                    Button(action: {
+                        // Test system notification
+                        NotificationService.shared.showMessageNotification(
+                            conversationId: "test-123",
+                            senderName: "Test User",
+                            messageText: "This is a test notification!",
+                            isGroup: false
+                        )
+                    }) {
+                        HStack {
+                            Spacer()
+                            Text("Test System Notification")
+                                .foregroundColor(.blue)
+                            Spacer()
+                        }
+                    }
+                    
+                    Button(action: {
+                        // Test in-app banner
+                        let notification = InAppNotification(
+                            conversationId: "test-123",
+                            senderName: "Test User",
+                            messageText: "This is a test in-app notification banner! It should appear at the top of the screen.",
+                            isGroup: false
+                        )
+                        InAppNotificationManager.shared.show(notification)
+                    }) {
+                        HStack {
+                            Spacer()
+                            Text("Test In-App Banner")
+                                .foregroundColor(.green)
+                            Spacer()
+                        }
+                    }
+                    
+                    Button(action: {
+                        // Test group notification
+                        let notification = InAppNotification(
+                            conversationId: "test-group-456",
+                            senderName: "Cool Group",
+                            messageText: "Someone sent a message in this group chat!",
+                            isGroup: true
+                        )
+                        InAppNotificationManager.shared.show(notification)
+                    }) {
+                        HStack {
+                            Spacer()
+                            Text("Test Group Banner")
+                                .foregroundColor(.orange)
+                            Spacer()
                         }
                     }
                 }

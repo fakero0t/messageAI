@@ -286,23 +286,38 @@ class ChatViewModel: ObservableObject {
     }
     
     private func startListening() {
+        print("🎧 [ChatViewModel] Setting up listener for conversation: \(conversationId)")
+        
         listenerService.listenToMessages(conversationId: conversationId) { [weak self] snapshot in
-            guard let self = self else { return }
+            guard let self = self else { 
+                print("⚠️ [ChatViewModel] Self is nil in listener callback")
+                return 
+            }
+            
+            print("📬 [ChatViewModel] Received message in callback: \(snapshot.text)")
+            print("   From: \(snapshot.senderId)")
+            print("   Current user: \(self.currentUserId)")
             
             Task {
                 do {
+                    print("💾 [ChatViewModel] Syncing message to local storage...")
                     try await self.messageService.syncMessageFromFirestore(snapshot)
+                    
                     await MainActor.run {
+                        print("🔄 [ChatViewModel] Triggering UI update...")
                         self.objectWillChange.send() // Explicitly trigger update
                         self.loadLocalMessages()
                         
                         // Trigger notification if message is from someone else
                         if snapshot.senderId != self.currentUserId {
+                            print("🔔 [ChatViewModel] Message is from someone else, triggering notification...")
                             self.showNotificationForMessage(snapshot)
+                        } else {
+                            print("ℹ️ [ChatViewModel] Message is from current user, skipping notification")
                         }
                     }
                 } catch {
-                    print("❌ Error syncing message: \(error)")
+                    print("❌ [ChatViewModel] Error syncing message: \(error)")
                 }
             }
         }
@@ -317,13 +332,46 @@ class ChatViewModel: ObservableObject {
             senderName = participants.first?.displayName ?? recipientId
         }
         
-        // Show notification
+        // Show system notification (will be suppressed if user is viewing this conversation)
         notificationService.showMessageNotification(
             conversationId: conversationId,
             senderName: senderName,
             messageText: snapshot.text,
             isGroup: isGroup
         )
+        
+        // ✨ NEW: Show in-app notification (always, even if in conversation)
+        Task { @MainActor in
+            let inAppNotification = InAppNotification(
+                conversationId: conversationId,
+                senderName: senderName,
+                messageText: snapshot.text,
+                isGroup: isGroup
+            )
+            InAppNotificationManager.shared.show(inAppNotification)
+            print("🔔 [ChatViewModel] In-app notification triggered for: \(senderName)")
+        }
+        
+        // ✨ NEW: Increment unread count ONLY if user not viewing this conversation
+        let isViewingThisConversation = notificationService.currentConversationId == conversationId
+        print("📊 [ChatViewModel] Unread count check:")
+        print("   Current conversation: \(notificationService.currentConversationId ?? "nil")")
+        print("   Message conversation: \(conversationId)")
+        print("   Is viewing: \(isViewingThisConversation)")
+        
+        if !isViewingThisConversation {
+            print("📊 [ChatViewModel] User NOT viewing this conversation - incrementing unread count")
+            Task {
+                do {
+                    try await localStorage.incrementUnreadCount(conversationId: conversationId)
+                    print("✅ [ChatViewModel] Unread count incremented for: \(conversationId)")
+                } catch {
+                    print("❌ [ChatViewModel] Failed to increment unread count: \(error)")
+                }
+            }
+        } else {
+            print("ℹ️ [ChatViewModel] User IS viewing conversation - skipping unread count increment")
+        }
     }
     
     private func observeNetwork() {

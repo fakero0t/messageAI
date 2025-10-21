@@ -22,6 +22,7 @@ struct swift_demoApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var delegate
     @StateObject private var authViewModel = AuthViewModel()
     @StateObject private var notificationService = NotificationService.shared
+    @StateObject private var inAppNotificationManager = InAppNotificationManager.shared
 
     init() {
         // Initialize network monitoring
@@ -34,6 +35,7 @@ struct swift_demoApp: App {
                 MainView()
                     .environmentObject(authViewModel)
                     .environmentObject(notificationService)
+                    .environmentObject(inAppNotificationManager)
                     .task {
                         // Request notification permissions
                         notificationService.requestAuthorization()

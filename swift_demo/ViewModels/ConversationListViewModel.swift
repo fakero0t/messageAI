@@ -88,14 +88,14 @@ class ConversationListViewModel: ObservableObject {
                 // Load from local storage
                 var localConversations = try localStorage.fetchAllConversations()
                 
-                print("📂 Loaded \(localConversations.count) conversations from local storage")
+                print("📂 [ConversationListViewModel] Loaded \(localConversations.count) conversations from local storage")
                 
                 // If local storage is empty (fresh install), fetch from Firestore
                 if localConversations.isEmpty {
-                    print("🌐 Local storage empty - fetching from Firestore...")
+                    print("🌐 [ConversationListViewModel] Local storage empty - fetching from Firestore...")
                     await fetchConversationsFromFirestore()
                     localConversations = try localStorage.fetchAllConversations()
-                    print("📂 Loaded \(localConversations.count) conversations after Firestore sync")
+                    print("📂 [ConversationListViewModel] Loaded \(localConversations.count) conversations after Firestore sync")
                 }
                 
                 // Sort by last message time
@@ -111,13 +111,24 @@ class ConversationListViewModel: ObservableObject {
                     conversationsWithDetails.append(details)
                 }
                 
-                conversations = conversationsWithDetails
-                isLoading = false
-                
-                print("✅ Loaded \(conversations.count) conversations with details")
+                // Force UI update by creating new array
+                await MainActor.run {
+                    let oldCount = conversations.count
+                    conversations = conversationsWithDetails
+                    isLoading = false
+                    
+                    print("✅ [ConversationListViewModel] Updated UI with \(conversations.count) conversations (was \(oldCount))")
+                    
+                    // Log first conversation's last message for debugging
+                    if let first = conversations.first {
+                        print("   Top conversation: \(first.displayName)")
+                        print("   Last message: \(first.conversation.lastMessageText ?? "none")")
+                        print("   Last message time: \(first.conversation.lastMessageTime?.description ?? "none")")
+                    }
+                }
                 
             } catch {
-                print("❌ Failed to load conversations: \(error)")
+                print("❌ [ConversationListViewModel] Failed to load conversations: \(error)")
                 errorMessage = "Failed to load conversations: \(error.localizedDescription)"
                 isLoading = false
             }
@@ -194,8 +205,11 @@ class ConversationListViewModel: ObservableObject {
         // Listen to all conversations for current user
         let currentUserId = AuthenticationService.shared.currentUser?.id ?? ""
         
+        print("🎧 [ConversationListViewModel] Starting conversation listener for user: \(currentUserId)")
+        
         conversationService.listenToUserConversations(userId: currentUserId) { [weak self] snapshot in
-            print("📬 Conversation update received: \(snapshot.id)")
+            print("📬 [ConversationListViewModel] Conversation update received: \(snapshot.id)")
+            print("   Last message: \(snapshot.lastMessageText ?? "none")")
             Task {
                 await self?.handleConversationUpdate(snapshot)
             }
@@ -203,25 +217,32 @@ class ConversationListViewModel: ObservableObject {
     }
     
     private func handleConversationUpdate(_ snapshot: ConversationSnapshot) async {
+        print("🔄 [ConversationListViewModel] Handling conversation update for: \(snapshot.id)")
+        print("   Last message: \(snapshot.lastMessageText ?? "none")")
+        print("   Last message time: \(snapshot.lastMessageTime?.description ?? "none")")
+        
         do {
             // Sync to local storage
             try await conversationService.syncConversationFromFirestore(snapshot)
+            print("✅ [ConversationListViewModel] Conversation synced to local storage")
             
             // Fetch recent messages for this conversation
             // This ensures group messages appear even if user hasn't opened the chat yet
+            print("📥 [ConversationListViewModel] Fetching recent messages...")
             await fetchRecentMessages(for: snapshot.id)
             
-            // Reload conversations
+            // Reload conversations to update UI
+            print("🔄 [ConversationListViewModel] Reloading conversations to update UI...")
             loadConversations()
             
         } catch {
-            print("❌ Failed to handle conversation update: \(error)")
+            print("❌ [ConversationListViewModel] Failed to handle conversation update: \(error)")
         }
     }
     
     private func fetchRecentMessages(for conversationId: String) async {
         do {
-            print("📥 Fetching recent messages for conversation: \(conversationId)")
+            print("📥 [ConversationListViewModel] Fetching recent messages for conversation: \(conversationId)")
             
             // Query Firestore for recent messages
             let db = Firestore.firestore()
@@ -231,7 +252,7 @@ class ConversationListViewModel: ObservableObject {
                 .limit(to: 50)
                 .getDocuments()
             
-            print("📨 Found \(snapshot.documents.count) messages")
+            print("📨 [ConversationListViewModel] Found \(snapshot.documents.count) messages")
             
             let currentUserId = AuthenticationService.shared.currentUser?.id ?? ""
             
@@ -239,47 +260,96 @@ class ConversationListViewModel: ObservableObject {
             for document in snapshot.documents {
                 let data = document.data()
                 if let messageSnapshot = try? parseMessage(from: data) {
+                    let messageAge = Date().timeIntervalSince(messageSnapshot.timestamp)
+                    print("   Message: \(messageSnapshot.text) (age: \(Int(messageAge))s)")
+                    
                     // Sync to local storage
                     try? await MessageService.shared.syncMessageFromFirestore(messageSnapshot)
                     
                     // Trigger notification if message is from someone else and recent (last 10 seconds)
-                    if messageSnapshot.senderId != currentUserId,
-                       Date().timeIntervalSince(messageSnapshot.timestamp) < 10 {
-                        await showNotificationForMessage(messageSnapshot, conversationId: conversationId)
+                    if messageSnapshot.senderId != currentUserId {
+                        if messageAge < 10 {
+                            print("🔔 [ConversationListViewModel] Message is recent (\(Int(messageAge))s old), triggering notification")
+                            await showNotificationForMessage(messageSnapshot, conversationId: conversationId)
+                        } else {
+                            print("ℹ️ [ConversationListViewModel] Message is old (\(Int(messageAge))s), skipping notification")
+                        }
                     }
                 }
             }
             
         } catch {
-            print("⚠️ Error fetching recent messages: \(error)")
+            print("⚠️ [ConversationListViewModel] Error fetching recent messages: \(error)")
         }
     }
     
-    private func showNotificationForMessage(_ snapshot: MessageSnapshot, conversationId: String) async {
-        // Get sender name
-        let senderName: String
-        do {
-            let sender = try await userService.fetchUser(byId: snapshot.senderId)
-            senderName = sender.displayName
-        } catch {
-            senderName = "Someone"
+        private func showNotificationForMessage(_ snapshot: MessageSnapshot, conversationId: String) async {
+            print("🔔 [ConversationListViewModel] Preparing notification for message: \(snapshot.text)")
+            print("   From: \(snapshot.senderId)")
+            print("   Conversation: \(conversationId)")
+            
+            // Get sender name
+            let senderName: String
+            do {
+                let sender = try await userService.fetchUser(byId: snapshot.senderId)
+                senderName = sender.displayName
+                print("   Sender name: \(senderName)")
+            } catch {
+                senderName = "Someone"
+                print("   ⚠️ Could not fetch sender name, using 'Someone'")
+            }
+            
+            // Check if it's a group conversation
+            let isGroup = await MainActor.run {
+                (try? localStorage.fetchConversation(byId: conversationId))?.isGroup ?? false
+            }
+            print("   Is group: \(isGroup)")
+            
+            // Show system notification
+            await MainActor.run {
+                print("🔔 [ConversationListViewModel] Calling NotificationService.showMessageNotification...")
+                NotificationService.shared.showMessageNotification(
+                    conversationId: conversationId,
+                    senderName: senderName,
+                    messageText: snapshot.text,
+                    isGroup: isGroup
+                )
+                
+                // ✨ NEW: Show in-app notification (always)
+                let inAppNotification = InAppNotification(
+                    conversationId: conversationId,
+                    senderName: senderName,
+                    messageText: snapshot.text,
+                    isGroup: isGroup
+                )
+                InAppNotificationManager.shared.show(inAppNotification)
+                print("🔔 [ConversationListViewModel] In-app notification triggered for: \(senderName)")
+            }
+            
+            // ✨ NEW: Increment unread count if user not viewing this conversation
+            let isViewingThisConversation = await MainActor.run {
+                NotificationService.shared.currentConversationId == conversationId
+            }
+            
+            print("📊 [ConversationListViewModel] Unread count check:")
+            print("   Current conversation: \(await MainActor.run { NotificationService.shared.currentConversationId ?? "nil" })")
+            print("   Message conversation: \(conversationId)")
+            print("   Is viewing: \(isViewingThisConversation)")
+            
+            if !isViewingThisConversation {
+                print("📊 [ConversationListViewModel] User NOT viewing this conversation - incrementing unread count")
+                await MainActor.run {
+                    do {
+                        try localStorage.incrementUnreadCount(conversationId: conversationId)
+                        print("✅ [ConversationListViewModel] Unread count incremented for: \(conversationId)")
+                    } catch {
+                        print("❌ [ConversationListViewModel] Failed to increment unread count: \(error)")
+                    }
+                }
+            } else {
+                print("ℹ️ [ConversationListViewModel] User IS viewing conversation - skipping unread count increment")
+            }
         }
-        
-        // Check if it's a group conversation
-        let isGroup = await MainActor.run {
-            (try? localStorage.fetchConversation(byId: conversationId))?.isGroup ?? false
-        }
-        
-        // Show notification
-        await MainActor.run {
-            NotificationService.shared.showMessageNotification(
-                conversationId: conversationId,
-                senderName: senderName,
-                messageText: snapshot.text,
-                isGroup: isGroup
-            )
-        }
-    }
     
     private func parseMessage(from data: [String: Any]) throws -> MessageSnapshot {
         return MessageSnapshot(

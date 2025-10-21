@@ -17,24 +17,44 @@ class NotificationService: NSObject, ObservableObject {
     
     private override init() {
         super.init()
+        print("🔔 [NotificationService] Initializing...")
+    }
+    
+    func setup() {
+        print("🔔 [NotificationService] Setting up delegate...")
         UNUserNotificationCenter.current().delegate = self
+        checkNotificationSettings()
+    }
+    
+    func checkNotificationSettings() {
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            DispatchQueue.main.async {
+                self.notificationPermissionGranted = settings.authorizationStatus == .authorized
+                print("🔔 Notification settings checked: \(settings.authorizationStatus.rawValue)")
+                print("   Authorized: \(self.notificationPermissionGranted)")
+            }
+        }
     }
     
     func requestAuthorization() {
+        print("🔔 [NotificationService] Requesting authorization...")
+        
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound]) { granted, error in
             DispatchQueue.main.async {
                 self.notificationPermissionGranted = granted
+                print("🔔 [NotificationService] Permission request result: \(granted)")
+                print("   notificationPermissionGranted is now: \(self.notificationPermissionGranted)")
             }
             
             if let error = error {
-                print("❌ Error requesting notification authorization: \(error)")
+                print("❌ [NotificationService] Error requesting notification authorization: \(error)")
                 return
             }
             
             if granted {
-                print("✅ Notification permissions granted")
+                print("✅ [NotificationService] Notification permissions GRANTED")
             } else {
-                print("⚠️ Notification permissions denied")
+                print("⚠️ [NotificationService] Notification permissions DENIED by user")
             }
         }
     }
@@ -45,6 +65,11 @@ class NotificationService: NSObject, ObservableObject {
         messageText: String,
         isGroup: Bool
     ) {
+        print("🔔 Attempting to show notification from \(senderName): \(messageText)")
+        print("   Current conversation: \(currentConversationId ?? "nil")")
+        print("   Target conversation: \(conversationId)")
+        print("   Permission granted: \(notificationPermissionGranted)")
+        
         // Don't show notification if user is currently viewing this conversation
         guard currentConversationId != conversationId else {
             print("🔕 Suppressing notification - user in conversation")
