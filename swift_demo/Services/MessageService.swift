@@ -62,6 +62,62 @@ class MessageService {
         }
     }
     
+    /// Send image message to Firestore
+    /// PR-7: New method for image-only messages
+    /// In Vue: const sendImageMessage = async (messageData) => { ... }
+    func sendImageMessage(
+        messageId: String,
+        imageUrl: String,
+        conversationId: String,
+        senderId: String,
+        recipientId: String,
+        imageWidth: Double,
+        imageHeight: Double
+    ) async throws {
+        print("☁️ [MessageService] Sending image message to Firestore: \(messageId)")
+        print("   Image URL: \(imageUrl)")
+        print("   Dimensions: \(Int(imageWidth))x\(Int(imageHeight))")
+        
+        try await retryService.executeWithRetry(policy: .default) {
+            let messageData: [String: Any] = [
+                "id": messageId,
+                "conversationId": conversationId,
+                "senderId": senderId,
+                "text": NSNull(), // Explicitly null for image-only messages
+                "timestamp": FieldValue.serverTimestamp(),
+                "status": "delivered",
+                "readBy": [],
+                "imageUrl": imageUrl,
+                "imageWidth": imageWidth,
+                "imageHeight": imageHeight
+            ]
+            
+            try await self.db.collection("messages").document(messageId).setData(messageData)
+            print("✅ [MessageService] Image message sent to Firestore")
+            
+            // Update conversation
+            var participants = [senderId]
+            if !recipientId.isEmpty {
+                participants.append(recipientId)
+            } else {
+                // Group chat - get all participants from local storage
+                if let conversation = try? await MainActor.run(body: {
+                    try self.localStorage.fetchConversation(byId: conversationId)
+                }) {
+                    participants = conversation.participantIds
+                }
+            }
+            
+            try await ConversationService.shared.updateConversation(
+                conversationId: conversationId,
+                lastMessage: "Image", // Show "Image" in conversation list
+                participants: participants
+            )
+            
+            print("✅ [MessageService] Conversation updated with image message")
+        }
+    }
+    
     func syncMessageFromFirestore(_ snapshot: MessageSnapshot) async throws {
         print("💾 [MessageService] Starting sync for message: \(snapshot.id)")
         print("   Text: \(snapshot.text)")

@@ -29,11 +29,23 @@ struct MessageBubbleView: View {
                         .padding(.leading, 4)
                 }
                 
-                Text(message.text)
-                    .padding(12)
-                    .background(bubbleColor)
-                    .foregroundColor(textColor)
-                    .cornerRadius(16)
+                // PR-7: Handle optional text (image messages may not have text)
+                if let text = message.text {
+                    Text(text)
+                        .padding(12)
+                        .background(bubbleColor)
+                        .foregroundColor(textColor)
+                        .cornerRadius(16)
+                } else if message.isImageMessage {
+                    // Placeholder for image messages (actual image display in PR-9)
+                    Text("[Image]")
+                        .font(.caption)
+                        .italic()
+                        .padding(12)
+                        .background(bubbleColor)
+                        .foregroundColor(textColor)
+                        .cornerRadius(16)
+                }
                 
                 HStack(spacing: 4) {
                     Text(message.timestamp.chatTimestamp())

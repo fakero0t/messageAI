@@ -21,6 +21,10 @@ class ChatViewModel: ObservableObject {
     @Published var groupName: String?
     @Published var participants: [User] = []
     
+    // Typing indicator (PR-3)
+    // In Vue: const typingText = ref<string | null>(null)
+    @Published var typingText: String?
+    
     let recipientId: String
     let currentUserId: String
     let conversationId: String
@@ -33,9 +37,12 @@ class ChatViewModel: ObservableObject {
     private let readReceiptService = ReadReceiptService.shared
     private let userService = UserService.shared
     private let notificationService = NotificationService.shared
+    private let typingService = TypingService.shared // PR-3
+    private var typingDebounceTimer: Timer? // PR-3
     private var cancellables = Set<AnyCancellable>()
     
     init(recipientId: String, conversationId: String? = nil) {
+        print("🚀 [ChatViewModel] Initializing with recipientId: \(recipientId)")
         self.recipientId = recipientId
         self.currentUserId = AuthenticationService.shared.currentUser?.id ?? ""
         
@@ -49,11 +56,17 @@ class ChatViewModel: ObservableObject {
             )
         }
         
+        print("🚀 [ChatViewModel] Conversation ID: \(self.conversationId)")
+        print("🚀 [ChatViewModel] Current User ID: \(self.currentUserId)")
+        
         loadConversationDetails()
         loadLocalMessages()
         startListening()
         observeNetwork()
         markMessagesAsRead()
+        setupTypingObserver() // PR-3
+        
+        print("🚀 [ChatViewModel] Initialization complete")
     }
     
     private func loadConversationDetails() {
@@ -95,6 +108,11 @@ class ChatViewModel: ObservableObject {
     }
     
     deinit {
+        // PR-3: Cleanup typing service
+        typingService.stopObservingTypingUsers(conversationId: conversationId)
+        typingService.stopTyping(conversationId: conversationId, userId: currentUserId)
+        typingDebounceTimer?.invalidate()
+        
         listenerService.stopListening(conversationId: conversationId)
     }
     
@@ -104,12 +122,22 @@ class ChatViewModel: ObservableObject {
     }
     
     func sendMessage(text: String) {
-        guard !text.isEmpty else { return }
+        print("📤 [ChatViewModel] sendMessage called with text: '\(text)'")
+        guard !text.isEmpty else {
+            print("⚠️ [ChatViewModel] Text is empty, not sending")
+            return
+        }
+        
+        // PR-3: Stop typing indicator immediately when sending message
+        stopTypingIndicator()
+        print("🛑 [Typing] Stopped typing indicator on send")
         
         let messageId = UUID().uuidString
+        print("📤 [ChatViewModel] Generated message ID: \(messageId)")
         
         // Determine initial status based on network
         let initialStatus: MessageStatus = networkMonitor.isConnected ? .pending : .queued
+        print("📤 [ChatViewModel] Network connected: \(networkMonitor.isConnected), status: \(initialStatus)")
         
         // 1. Optimistic insert - show immediately
         let optimisticMessage = MessageEntity(
@@ -122,11 +150,14 @@ class ChatViewModel: ObservableObject {
         )
         
         messages.append(optimisticMessage)
+        print("📤 [ChatViewModel] Message appended to local array, total messages: \(messages.count)")
         
         // 2. Handle based on network status
         if networkMonitor.isConnected {
+            print("📤 [ChatViewModel] Sending online...")
             sendOnline(messageId: messageId, text: text)
         } else {
+            print("📤 [ChatViewModel] Sending offline (queuing)...")
             sendOffline(messageId: messageId, text: text)
         }
     }
@@ -208,6 +239,12 @@ class ChatViewModel: ObservableObject {
     func retryMessage(messageId: String) {
         guard let message = messages.first(where: { $0.id == messageId }) else { return }
         
+        // Only retry text messages (image messages have different retry logic)
+        guard let text = message.text else {
+            print("⚠️ Cannot retry: message has no text (likely an image message)")
+            return
+        }
+        
         // Update status to pending
         updateMessageStatus(messageId: messageId, status: .pending)
         
@@ -215,7 +252,7 @@ class ChatViewModel: ObservableObject {
             do {
                 try await messageService.sendToFirestore(
                     messageId: messageId,
-                    text: message.text,
+                    text: text,
                     conversationId: conversationId,
                     senderId: currentUserId,
                     recipientId: recipientId
@@ -297,6 +334,13 @@ class ChatViewModel: ObservableObject {
             print("📬 [ChatViewModel] Received message in callback: \(snapshot.text)")
             print("   From: \(snapshot.senderId)")
             print("   Current user: \(self.currentUserId)")
+            
+            // PR-3: Clear typing indicator for sender (they just sent a message, so they're not typing)
+            // In Vue: typingUsers.value = typingUsers.value.filter(u => u.id !== message.senderId)
+            if snapshot.senderId != self.currentUserId {
+                print("🛑 [Typing] Clearing typing indicator for message sender: \(snapshot.senderId)")
+                self.clearTypingIndicatorForUser(userId: snapshot.senderId)
+            }
             
             Task {
                 do {
@@ -403,6 +447,103 @@ class ChatViewModel: ObservableObject {
             } catch {
                 print("⚠️ Failed to mark messages as read: \(error)")
             }
+        }
+    }
+    
+    // MARK: - Typing Indicator (PR-3)
+    
+    /// In Vue: const { typingUsers } = useTypingIndicator(conversationId)
+    /// Sets up observer for typing users and updates typingText reactively
+    private func setupTypingObserver() {
+        print("👂 [Typing] Setting up typing observer for conversation: \(conversationId)")
+        typingService.observeTypingUsers(conversationId: conversationId, currentUserId: currentUserId)
+        
+        // Watch for changes in typingUsers and format the display text
+        // In Vue: watch(typingUsers, (users) => { typingText.value = formatTypingText(users) })
+        typingService.$typingUsers
+            .map { [weak self] typingUsersDict -> String? in
+                guard let self = self else { return nil }
+                let users = typingUsersDict[self.conversationId] ?? []
+                print("📝 [Typing] Users typing in \(self.conversationId): \(users.map { $0.displayName })")
+                let formatted = self.typingService.formatTypingText(for: self.conversationId)
+                print("📝 [Typing] Formatted text: \(formatted ?? "nil")")
+                return formatted
+            }
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] formattedText in
+                print("🎨 [Typing] Updating UI with text: \(formattedText ?? "nil")")
+                self?.typingText = formattedText
+            }
+            .store(in: &cancellables)
+    }
+    
+    /// Called when user types in the message input field
+    /// In Vue: const handleTextChange = (text: string) => { ... }
+    func handleTextFieldChange(text: String) {
+        guard let currentUserName = AuthenticationService.shared.currentUser?.displayName else {
+            print("⚠️ [Typing] No current user display name")
+            return
+        }
+        
+        print("⌨️ [Typing] Text changed: '\(text)' in conversation: \(conversationId)")
+        
+        // Cancel existing timer
+        typingDebounceTimer?.invalidate()
+        
+        if !text.isEmpty {
+            // User is typing - broadcast status
+            print("✅ [Typing] Starting typing indicator for \(currentUserName)")
+            typingService.startTyping(
+                conversationId: conversationId,
+                userId: currentUserId,
+                displayName: currentUserName
+            )
+            
+            // Set timer to stop typing after 2.5 seconds of no changes (prevents stuck indicators)
+            // In Vue: debounceTimer = setTimeout(() => stopTyping(), 2500)
+            typingDebounceTimer = Timer.scheduledTimer(withTimeInterval: 2.5, repeats: false) { [weak self] _ in
+                guard let self = self else { return }
+                print("⏱️ [Typing] Auto-stopping typing after 2.5s")
+                self.typingService.stopTyping(
+                    conversationId: self.conversationId,
+                    userId: self.currentUserId
+                )
+            }
+        } else {
+            // User cleared text - stop broadcasting
+            print("🛑 [Typing] Stopping typing indicator (text cleared)")
+            typingService.stopTyping(
+                conversationId: conversationId,
+                userId: currentUserId
+            )
+        }
+    }
+    
+    /// Explicitly stop typing indicator (called when leaving chat)
+    func stopTypingIndicator() {
+        typingDebounceTimer?.invalidate()
+        typingService.stopTyping(
+            conversationId: conversationId,
+            userId: currentUserId
+        )
+    }
+    
+    /// Clear typing indicator for a specific user (called when they send a message)
+    /// In Vue: typingUsers.value = typingUsers.value.filter(u => u.id !== userId)
+    private func clearTypingIndicatorForUser(userId: String) {
+        // Get current typing users for this conversation
+        guard var users = typingService.typingUsers[conversationId] else {
+            return
+        }
+        
+        // Remove the specific user
+        users.removeAll { $0.id == userId }
+        
+        // Update the published property on main thread
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            self.typingService.typingUsers[self.conversationId] = users
+            print("✅ [Typing] Removed typing indicator for user: \(userId), remaining: \(users.count)")
         }
     }
     

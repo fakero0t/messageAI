@@ -26,5 +26,7 @@
 	<true></true>
 	<key>GOOGLE_APP_ID</key>
 	<string>1:273107116651:ios:96ae23dd4456592b04072e</string>
+	<key>DATABASE_URL</key>
+	<string>https://messageai-cbd8a-default-rtdb.firebaseio.com</string>
 </dict>
 </plist>

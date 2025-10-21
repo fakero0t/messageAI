@@ -85,12 +85,14 @@ class CrashRecoveryService {
                 let alreadyQueued = try isMessageQueued(message.id)
                 
                 if !alreadyQueued {
-                    // Add to queue
-                    try queueService.queueMessage(
-                        id: message.id,
-                        conversationId: message.conversationId,
-                        text: message.text
-                    )
+                    // Add to queue (only for text messages, skip image messages)
+                    if let text = message.text {
+                        try queueService.queueMessage(
+                            id: message.id,
+                            conversationId: message.conversationId,
+                            text: text
+                        )
+                    }
                     
                     // Update status to queued
                     try localStorage.updateMessageStatus(messageId: message.id, status: .queued)
