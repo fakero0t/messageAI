@@ -266,6 +266,10 @@ class ChatViewModel: ObservableObject {
             let fetchedMessages = try localStorage.fetchMessages(for: conversationId)
             messages = fetchedMessages.map { $0 } // Force new array to trigger SwiftUI update
             print("📨 Loaded \(messages.count) messages from local storage")
+            
+            // If local has messages but we suspect they're stale, the Firestore listener will sync them
+            // For fresh installs, ConversationListViewModel already fetches messages
+            
         } catch {
             print("⚠️ Error loading local messages: \(error)")
         }

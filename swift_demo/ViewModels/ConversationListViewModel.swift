@@ -86,9 +86,17 @@ class ConversationListViewModel: ObservableObject {
         Task {
             do {
                 // Load from local storage
-                let localConversations = try localStorage.fetchAllConversations()
+                var localConversations = try localStorage.fetchAllConversations()
                 
                 print("📂 Loaded \(localConversations.count) conversations from local storage")
+                
+                // If local storage is empty (fresh install), fetch from Firestore
+                if localConversations.isEmpty {
+                    print("🌐 Local storage empty - fetching from Firestore...")
+                    await fetchConversationsFromFirestore()
+                    localConversations = try localStorage.fetchAllConversations()
+                    print("📂 Loaded \(localConversations.count) conversations after Firestore sync")
+                }
                 
                 // Sort by last message time
                 let sorted = localConversations.sorted {
@@ -114,6 +122,41 @@ class ConversationListViewModel: ObservableObject {
                 isLoading = false
             }
         }
+    }
+    
+    private func fetchConversationsFromFirestore() async {
+        do {
+            let currentUserId = AuthenticationService.shared.currentUser?.id ?? ""
+            
+            let db = Firestore.firestore()
+            let snapshot = try await db.collection("conversations")
+                .whereField("participants", arrayContains: currentUserId)
+                .getDocuments()
+            
+            print("📥 Fetched \(snapshot.documents.count) conversations from Firestore")
+            
+            for document in snapshot.documents {
+                let data = document.data()
+                if let conversationSnapshot = try? parseConversation(from: data) {
+                    try await conversationService.syncConversationFromFirestore(conversationSnapshot)
+                    // Also fetch messages for this conversation
+                    await fetchRecentMessages(for: conversationSnapshot.id)
+                }
+            }
+            
+        } catch {
+            print("❌ Error fetching conversations from Firestore: \(error)")
+        }
+    }
+    
+    private func parseConversation(from data: [String: Any]) throws -> ConversationSnapshot {
+        return ConversationSnapshot(
+            id: data["id"] as? String ?? "",
+            participantIds: data["participants"] as? [String] ?? [],
+            isGroup: data["isGroup"] as? Bool ?? false,
+            lastMessageText: data["lastMessageText"] as? String,
+            lastMessageTime: (data["lastMessageTime"] as? Timestamp)?.dateValue()
+        )
     }
     
     private func loadConversationDetails(_ conversation: ConversationEntity) async throws -> ConversationWithDetails {
@@ -223,9 +266,9 @@ class ConversationListViewModel: ObservableObject {
         }
         
         // Check if it's a group conversation
-        let isGroup = try? await MainActor.run {
-            try? localStorage.fetchConversation(byId: conversationId)?.isGroup ?? false
-        } ?? false
+        let isGroup = await MainActor.run {
+            (try? localStorage.fetchConversation(byId: conversationId))?.isGroup ?? false
+        }
         
         // Show notification
         await MainActor.run {
