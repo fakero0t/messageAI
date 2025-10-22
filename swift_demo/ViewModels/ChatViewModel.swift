@@ -240,7 +240,7 @@ class ChatViewModel: ObservableObject {
         }
     }
     
-    // PR-9: Send image message
+    // PR-11: Send image message (with offline queue support)
     func sendImage(_ image: UIImage) {
         print("📸 [ChatViewModel] sendImage called")
         let messageId = UUID().uuidString
@@ -257,14 +257,18 @@ class ChatViewModel: ObservableObject {
                 let dimensions = ImageCompressor.getDimensions(image)
                 print("📸 Image dimensions: \(Int(dimensions.width))x\(Int(dimensions.height))")
                 
-                // 2. Create optimistic message (shows immediately with local path)
+                // 2. Determine initial status based on network
+                let initialStatus: MessageStatus = networkMonitor.isConnected ? .pending : .queued
+                print("📸 Network connected: \(networkMonitor.isConnected), status: \(initialStatus)")
+                
+                // 3. Create optimistic message (shows immediately with local path)
                 let optimisticMessage = MessageEntity(
                     id: messageId,
                     conversationId: conversationId,
                     senderId: currentUserId,
                     text: nil, // Image-only message
                     timestamp: Date(),
-                    status: .pending,
+                    status: initialStatus,
                     imageLocalPath: imagePath.path,
                     imageWidth: dimensions.width,
                     imageHeight: dimensions.height
@@ -273,14 +277,140 @@ class ChatViewModel: ObservableObject {
                 messages.append(optimisticMessage)
                 print("✅ Optimistic image message added to UI")
                 
-                // 3. Save to local storage
+                // 4. Save to local storage
                 try await MainActor.run {
                     try localStorage.saveMessage(optimisticMessage)
                 }
                 print("✅ Image message saved to local storage")
                 
-                // 4. Upload to Firebase Storage
-                print("☁️ Starting upload to Firebase Storage...")
+                // 5. Handle based on network status
+                if networkMonitor.isConnected {
+                    // Online - upload immediately
+                    print("☁️ Starting upload to Firebase Storage...")
+                    let downloadUrl = try await imageUploadService.uploadImage(
+                        image,
+                        messageId: messageId,
+                        conversationId: conversationId,
+                        progressHandler: { [weak self] progress in
+                            Task { @MainActor in
+                                self?.uploadProgress[messageId] = progress.progress
+                                print("📊 Upload progress: \(Int(progress.progress * 100))%")
+                            }
+                        }
+                    )
+                    
+                    print("✅ Image uploaded, URL: \(downloadUrl)")
+                    
+                    // Send to Firestore
+                    try await messageService.sendImageMessage(
+                        messageId: messageId,
+                        imageUrl: downloadUrl,
+                        conversationId: conversationId,
+                        senderId: currentUserId,
+                        recipientId: recipientId,
+                        imageWidth: dimensions.width,
+                        imageHeight: dimensions.height
+                    )
+                    
+                    print("✅ Image message sent to Firestore")
+                    
+                    // Update local message with URL
+                    try await MainActor.run {
+                        try localStorage.updateImageMessage(
+                            messageId: messageId,
+                            imageUrl: downloadUrl,
+                            status: .delivered
+                        )
+                    }
+                    
+                    // Update UI
+                    if let index = messages.firstIndex(where: { $0.id == messageId }) {
+                        messages[index].imageUrl = downloadUrl
+                        messages[index].status = .delivered
+                    }
+                    
+                    uploadProgress.removeValue(forKey: messageId)
+                    print("✅ Image message flow complete")
+                    
+                } else {
+                    // Offline - queue for later
+                    print("📥 Offline, queueing image message")
+                    try queueService.queueImageMessage(
+                        id: messageId,
+                        conversationId: conversationId,
+                        imageLocalPath: imagePath.path,
+                        imageWidth: dimensions.width,
+                        imageHeight: dimensions.height
+                    )
+                    print("✅ Image message queued for upload when online")
+                }
+                
+            } catch {
+                print("❌ Image send failed: \(error)")
+                errorMessage = "Failed to send image"
+                updateMessageStatus(messageId: messageId, status: .failed)
+                uploadProgress.removeValue(forKey: messageId)
+            }
+        }
+    }
+    
+    func retryMessage(messageId: String) {
+        guard let message = messages.first(where: { $0.id == messageId }) else { return }
+        
+        // Check if it's an image message or text message
+        if message.isImageMessage {
+            retryImageMessage(messageId: messageId)
+        } else if let text = message.text {
+            retryTextMessage(messageId: messageId, text: text)
+        } else {
+            print("⚠️ Cannot retry: message has no content")
+        }
+    }
+    
+    private func retryTextMessage(messageId: String, text: String) {
+        updateMessageStatus(messageId: messageId, status: .pending)
+        
+        Task {
+            do {
+                try await messageService.sendToFirestore(
+                    messageId: messageId,
+                    text: text,
+                    conversationId: conversationId,
+                    senderId: currentUserId,
+                    recipientId: recipientId
+                )
+                
+                updateMessageStatus(messageId: messageId, status: .sent)
+                print("✅ Text message retry successful")
+                
+            } catch {
+                updateMessageStatus(messageId: messageId, status: .failed)
+                errorMessage = "Retry failed"
+                print("❌ Text retry failed: \(error)")
+            }
+        }
+    }
+    
+    private func retryImageMessage(messageId: String) {
+        guard let message = messages.first(where: { $0.id == messageId }) else { return }
+        
+        print("🔄 [ChatViewModel] Retrying image message: \(messageId)")
+        
+        // Load image from local storage
+        guard let image = try? ImageFileManager.shared.loadImage(withId: messageId) else {
+            print("❌ Failed to load image from local storage")
+            errorMessage = "Cannot retry: image file not found"
+            return
+        }
+        
+        updateMessageStatus(messageId: messageId, status: .pending)
+        
+        Task {
+            do {
+                let dimensions = ImageCompressor.getDimensions(image)
+                
+                // Upload to Firebase Storage
+                print("☁️ Retrying upload to Firebase Storage...")
                 let downloadUrl = try await imageUploadService.uploadImage(
                     image,
                     messageId: messageId,
@@ -295,20 +425,20 @@ class ChatViewModel: ObservableObject {
                 
                 print("✅ Image uploaded, URL: \(downloadUrl)")
                 
-                // 5. Send to Firestore
+                // Send to Firestore
                 try await messageService.sendImageMessage(
                     messageId: messageId,
                     imageUrl: downloadUrl,
                     conversationId: conversationId,
                     senderId: currentUserId,
                     recipientId: recipientId,
-                    imageWidth: dimensions.width,
-                    imageHeight: dimensions.height
+                    imageWidth: message.imageWidth ?? dimensions.width,
+                    imageHeight: message.imageHeight ?? dimensions.height
                 )
                 
                 print("✅ Image message sent to Firestore")
                 
-                // 6. Update local message with URL
+                // Update local message with URL
                 try await MainActor.run {
                     try localStorage.updateImageMessage(
                         messageId: messageId,
@@ -317,56 +447,20 @@ class ChatViewModel: ObservableObject {
                     )
                 }
                 
-                // 7. Update UI
+                // Update UI
                 if let index = messages.firstIndex(where: { $0.id == messageId }) {
                     messages[index].imageUrl = downloadUrl
                     messages[index].status = .delivered
                 }
                 
-                // 8. Clean up local file (optional, can keep for caching)
-                // try? ImageFileManager.shared.deleteImage(withId: messageId)
-                
                 uploadProgress.removeValue(forKey: messageId)
-                print("✅ Image message flow complete")
+                print("✅ Image message retry successful")
                 
             } catch {
-                print("❌ Image send failed: \(error)")
-                errorMessage = "Failed to send image"
+                print("❌ Image retry failed: \(error)")
+                errorMessage = "Failed to retry image"
                 updateMessageStatus(messageId: messageId, status: .failed)
                 uploadProgress.removeValue(forKey: messageId)
-            }
-        }
-    }
-    
-    func retryMessage(messageId: String) {
-        guard let message = messages.first(where: { $0.id == messageId }) else { return }
-        
-        // Only retry text messages (image messages have different retry logic)
-        guard let text = message.text else {
-            print("⚠️ Cannot retry: message has no text (likely an image message)")
-            return
-        }
-        
-        // Update status to pending
-        updateMessageStatus(messageId: messageId, status: .pending)
-        
-        Task {
-            do {
-                try await messageService.sendToFirestore(
-                    messageId: messageId,
-                    text: text,
-                    conversationId: conversationId,
-                    senderId: currentUserId,
-                    recipientId: recipientId
-                )
-                
-                updateMessageStatus(messageId: messageId, status: .sent)
-                print("✅ Message retry successful")
-                
-            } catch {
-                updateMessageStatus(messageId: messageId, status: .failed)
-                errorMessage = "Retry failed"
-                print("❌ Retry failed: \(error)")
             }
         }
     }
@@ -482,7 +576,7 @@ class ChatViewModel: ObservableObject {
         notificationService.showMessageNotification(
             conversationId: conversationId,
             senderName: senderName,
-            messageText: snapshot.text,
+            messageText: snapshot.text ?? "Image",
             isGroup: isGroup
         )
         
@@ -491,7 +585,7 @@ class ChatViewModel: ObservableObject {
             let inAppNotification = InAppNotification(
                 conversationId: conversationId,
                 senderName: senderName,
-                messageText: snapshot.text,
+                messageText: snapshot.text ?? "Image",
                 isGroup: isGroup
             )
             InAppNotificationManager.shared.show(inAppNotification)

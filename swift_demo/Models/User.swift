@@ -13,6 +13,7 @@ struct User: Codable, Identifiable, Hashable {
     let displayName: String
     var online: Bool = false
     var lastSeen: Date?
+    var profileImageUrl: String? // PR-12: Profile picture URL
     
     var statusText: String {
         if online {
@@ -22,6 +23,13 @@ struct User: Codable, Identifiable, Hashable {
         } else {
             return "Offline"
         }
+    }
+    
+    // PR-12: Generate initials for avatar fallback
+    var initials: String {
+        let components = displayName.split(separator: " ")
+        let initials = components.prefix(2).compactMap { $0.first }
+        return String(initials).uppercased()
     }
 }
 

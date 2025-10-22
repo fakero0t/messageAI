@@ -14,6 +14,8 @@ struct MessageBubbleView: View {
     let onRetry: () -> Void
     let onDelete: () -> Void
     
+    @State private var showFullScreenImage = false // PR-10
+    
     var body: some View {
         HStack {
             if isFromCurrentUser {
@@ -29,14 +31,14 @@ struct MessageBubbleView: View {
                         .padding(.leading, 4)
                 }
                 
-                // PR-9: Display image or text message
+                // PR-10: Display image or text message
                 if message.isImageMessage {
                     ImageMessageView(
                         message: message,
                         isFromCurrentUser: isFromCurrentUser,
                         onTap: {
-                            // TODO: PR-10 - Full screen image viewer
-                            print("🖼️ Image tapped: \(message.id)")
+                            print("🖼️ [MessageBubble] Opening full-screen viewer for: \(message.id)")
+                            showFullScreenImage = true
                         }
                     )
                 } else if let text = message.text {
@@ -69,6 +71,13 @@ struct MessageBubbleView: View {
         .padding(.horizontal)
         .padding(.vertical, 2)
         .animation(.easeInOut(duration: 0.2), value: message.status)
+        .sheet(isPresented: $showFullScreenImage) {
+            FullScreenImageView(
+                imageUrl: message.imageUrl,
+                localImage: nil,
+                message: message
+            )
+        }
     }
     
     private var bubbleColor: Color {

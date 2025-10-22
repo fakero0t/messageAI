@@ -44,6 +44,29 @@ class MessageQueueService: ObservableObject {
         print("📥 Message queued: \(id)")
     }
     
+    // PR-11: Queue image message for offline sending
+    func queueImageMessage(
+        id: String,
+        conversationId: String,
+        imageLocalPath: String,
+        imageWidth: Double,
+        imageHeight: Double
+    ) throws {
+        let queuedMessage = QueuedMessageEntity(
+            id: id,
+            conversationId: conversationId,
+            text: nil,
+            timestamp: Date(),
+            imageLocalPath: imageLocalPath,
+            imageWidth: imageWidth,
+            imageHeight: imageHeight
+        )
+        
+        try localStorage.queueMessage(queuedMessage)
+        updateQueueCount()
+        print("📥 Image message queued: \(id)")
+    }
+    
     func processQueue() async {
         guard !isProcessing else {
             print("⚠️ Queue already processing")
@@ -67,48 +90,11 @@ class MessageQueueService: ObservableObject {
                     continue
                 }
                 
-                do {
-                    // Extract recipient ID from conversation ID
-                    let conversationId = queuedMessage.conversationId
-                    let participants = conversationId.split(separator: "_").map(String.init)
-                    
-                    guard participants.count == 2 else {
-                        print("⚠️ Invalid conversation ID format")
-                        continue
-                    }
-                    
-                    let currentUserId = AuthenticationService.shared.currentUser?.id ?? ""
-                    let recipientId = participants.first { $0 != currentUserId } ?? ""
-                    
-                    print("📤 Attempting to send queued message: \(queuedMessage.id)")
-                    
-                    // Attempt to send
-                    try await messageService.sendToFirestore(
-                        messageId: queuedMessage.id,
-                        text: queuedMessage.text,
-                        conversationId: queuedMessage.conversationId,
-                        senderId: currentUserId,
-                        recipientId: recipientId
-                    )
-                    
-                    // Success - remove from queue
-                    try localStorage.removeQueuedMessage(queuedMessage.id)
-                    print("✅ Queued message sent successfully: \(queuedMessage.id)")
-                    
-                    // Update message status to delivered
-                    try localStorage.updateMessageStatus(
-                        messageId: queuedMessage.id,
-                        status: .delivered
-                    )
-                    
-                } catch {
-                    // Failed - increment retry count with backoff
-                    print("❌ Failed to send queued message \(queuedMessage.id): \(error)")
-                    try localStorage.incrementRetryCount(messageId: queuedMessage.id)
-                    
-                    // Apply backoff delay before next queue processing
-                    let delay = retryPolicy.delay(forAttempt: queuedMessage.retryCount)
-                    print("⏳ Will retry queue processing after \(String(format: "%.1f", delay))s")
+                // PR-11: Handle image messages vs text messages
+                if queuedMessage.isImageMessage {
+                    await processImageMessage(queuedMessage)
+                } else {
+                    await processTextMessage(queuedMessage)
                 }
             }
             
@@ -116,7 +102,128 @@ class MessageQueueService: ObservableObject {
             print("✅ Queue processing complete")
             
         } catch {
-            print("❌ Error processing queue: \(error)")
+            print("❌ Queue processing error: \(error)")
+        }
+    }
+    
+    // PR-11: Process text message from queue
+    private func processTextMessage(_ queuedMessage: QueuedMessageEntity) async {
+        guard let text = queuedMessage.text else {
+            print("⚠️ Text message has no text content")
+            try? markMessageAsFailed(queuedMessage)
+            return
+        }
+        
+        do {
+            // Extract recipient ID from conversation ID
+            let conversationId = queuedMessage.conversationId
+            let participants = conversationId.split(separator: "_").map(String.init)
+            
+            guard participants.count == 2 else {
+                print("⚠️ Invalid conversation ID format")
+                return
+            }
+            
+            let currentUserId = AuthenticationService.shared.currentUser?.id ?? ""
+            let recipientId = participants.first { $0 != currentUserId } ?? ""
+            
+            print("📤 Attempting to send queued text message: \(queuedMessage.id)")
+            
+            // Attempt to send
+            try await messageService.sendToFirestore(
+                messageId: queuedMessage.id,
+                text: text,
+                conversationId: queuedMessage.conversationId,
+                senderId: currentUserId,
+                recipientId: recipientId
+            )
+            
+            // Success - remove from queue
+            try localStorage.removeQueuedMessage(queuedMessage.id)
+            print("✅ Queued text message sent successfully: \(queuedMessage.id)")
+            
+            // Update message status to delivered
+            try localStorage.updateMessageStatus(
+                messageId: queuedMessage.id,
+                status: .delivered
+            )
+            
+        } catch {
+            // Failed - increment retry count
+            print("❌ Failed to send queued text message \(queuedMessage.id): \(error)")
+            try? localStorage.incrementRetryCount(messageId: queuedMessage.id)
+        }
+    }
+    
+    // PR-11: Process image message from queue
+    private func processImageMessage(_ queuedMessage: QueuedMessageEntity) async {
+        guard let imageLocalPath = queuedMessage.imageLocalPath else {
+            print("⚠️ Image message has no local path")
+            try? markMessageAsFailed(queuedMessage)
+            return
+        }
+        
+        print("📸 Processing queued image message: \(queuedMessage.id)")
+        
+        // Load image from local storage
+        guard let image = try? ImageFileManager.shared.loadImage(withId: queuedMessage.id) else {
+            print("❌ Failed to load image from local storage")
+            try? markMessageAsFailed(queuedMessage)
+            return
+        }
+        
+        do {
+            // Get dimensions
+            let dimensions = ImageCompressor.getDimensions(image)
+            
+            // Extract recipient ID
+            let participants = queuedMessage.conversationId.split(separator: "_").map(String.init)
+            let currentUserId = AuthenticationService.shared.currentUser?.id ?? ""
+            let recipientId = participants.first { $0 != currentUserId } ?? ""
+            
+            print("☁️ Uploading queued image to Firebase Storage...")
+            
+            // Upload to Firebase Storage
+            let downloadUrl = try await ImageUploadService.shared.uploadImage(
+                image,
+                messageId: queuedMessage.id,
+                conversationId: queuedMessage.conversationId,
+                progressHandler: { progress in
+                    print("📊 Upload progress: \(Int(progress.progress * 100))%")
+                }
+            )
+            
+            print("✅ Image uploaded, sending to Firestore...")
+            
+            // Send to Firestore
+            try await MessageService.shared.sendImageMessage(
+                messageId: queuedMessage.id,
+                imageUrl: downloadUrl,
+                conversationId: queuedMessage.conversationId,
+                senderId: currentUserId,
+                recipientId: recipientId,
+                imageWidth: queuedMessage.imageWidth ?? dimensions.width,
+                imageHeight: queuedMessage.imageHeight ?? dimensions.height
+            )
+            
+            // Success - remove from queue
+            try localStorage.removeQueuedMessage(queuedMessage.id)
+            print("✅ Queued image message sent successfully: \(queuedMessage.id)")
+            
+            // Update local message with URL
+            try localStorage.updateImageMessage(
+                messageId: queuedMessage.id,
+                imageUrl: downloadUrl,
+                status: .delivered
+            )
+            
+            // Clean up local file
+            try? ImageFileManager.shared.deleteImage(withId: queuedMessage.id)
+            print("🗑️ Cleaned up local image file")
+            
+        } catch {
+            print("❌ Failed to send queued image message \(queuedMessage.id): \(error)")
+            try? localStorage.incrementRetryCount(messageId: queuedMessage.id)
         }
     }
     

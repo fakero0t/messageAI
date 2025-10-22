@@ -120,7 +120,8 @@ class MessageService {
     
     func syncMessageFromFirestore(_ snapshot: MessageSnapshot) async throws {
         print("💾 [MessageService] Starting sync for message: \(snapshot.id)")
-        print("   Text: \(snapshot.text)")
+        print("   Text: \(snapshot.text ?? "nil")")
+        print("   Image URL: \(snapshot.imageUrl ?? "nil")")
         print("   Conversation: \(snapshot.conversationId)")
         
         try await MainActor.run {
@@ -147,7 +148,10 @@ class MessageService {
                         text: snapshot.text,
                         timestamp: snapshot.timestamp,
                         status: MessageStatus(rawValue: snapshot.status) ?? .delivered,
-                        readBy: snapshot.readBy
+                        readBy: snapshot.readBy,
+                        imageUrl: snapshot.imageUrl,
+                        imageWidth: snapshot.imageWidth,
+                        imageHeight: snapshot.imageHeight
                     )
                     try localStorage.saveMessage(message)
                     print("✅ [MessageService] Message saved successfully")

@@ -311,7 +311,7 @@ class ConversationListViewModel: ObservableObject {
                 NotificationService.shared.showMessageNotification(
                     conversationId: conversationId,
                     senderName: senderName,
-                    messageText: snapshot.text,
+                    messageText: snapshot.text ?? "Image",
                     isGroup: isGroup
                 )
                 
@@ -319,7 +319,7 @@ class ConversationListViewModel: ObservableObject {
                 let inAppNotification = InAppNotification(
                     conversationId: conversationId,
                     senderName: senderName,
-                    messageText: snapshot.text,
+                    messageText: snapshot.text ?? "Image",
                     isGroup: isGroup
                 )
                 InAppNotificationManager.shared.show(inAppNotification)
@@ -356,10 +356,13 @@ class ConversationListViewModel: ObservableObject {
             id: data["id"] as? String ?? "",
             conversationId: data["conversationId"] as? String ?? "",
             senderId: data["senderId"] as? String ?? "",
-            text: data["text"] as? String ?? "",
+            text: data["text"] as? String,
             timestamp: (data["timestamp"] as? Timestamp)?.dateValue() ?? Date(),
             status: data["status"] as? String ?? "delivered",
-            readBy: data["readBy"] as? [String] ?? []
+            readBy: data["readBy"] as? [String] ?? [],
+            imageUrl: data["imageUrl"] as? String,
+            imageWidth: data["imageWidth"] as? Double,
+            imageHeight: data["imageHeight"] as? Double
         )
     }
 }

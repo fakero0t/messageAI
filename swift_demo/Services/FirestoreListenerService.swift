@@ -72,10 +72,15 @@ class FirestoreListenerService {
         let id = data["id"] as? String ?? ""
         let conversationId = data["conversationId"] as? String ?? ""
         let senderId = data["senderId"] as? String ?? ""
-        let text = data["text"] as? String ?? ""
+        let text = data["text"] as? String  // PR-7: Can be nil for image messages
         let timestamp = (data["timestamp"] as? Timestamp)?.dateValue() ?? Date()
         let status = data["status"] as? String ?? "delivered"
         let readBy = data["readBy"] as? [String] ?? []
+        
+        // PR-7: Image fields
+        let imageUrl = data["imageUrl"] as? String
+        let imageWidth = data["imageWidth"] as? Double
+        let imageHeight = data["imageHeight"] as? Double
         
         return MessageSnapshot(
             id: id,
@@ -84,7 +89,10 @@ class FirestoreListenerService {
             text: text,
             timestamp: timestamp,
             status: status,
-            readBy: readBy
+            readBy: readBy,
+            imageUrl: imageUrl,
+            imageWidth: imageWidth,
+            imageHeight: imageHeight
         )
     }
 }
@@ -93,9 +101,14 @@ struct MessageSnapshot {
     let id: String
     let conversationId: String
     let senderId: String
-    let text: String
+    let text: String?  // PR-7: Optional for image-only messages
     let timestamp: Date
     let status: String
     let readBy: [String]
+    
+    // PR-7: Image support
+    let imageUrl: String?
+    let imageWidth: Double?
+    let imageHeight: Double?
 }
 

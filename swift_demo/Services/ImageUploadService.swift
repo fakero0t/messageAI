@@ -164,27 +164,30 @@ class ImageUploadService {
             uploadTask.observe(.success) { [weak self] snapshot in
                 print("✅ [ImageUpload] Upload complete, fetching download URL...")
                 
-                // Get download URL
-                // In Vue: const response = await axios.get(uploadedFile.url)
-                imageRef.downloadURL { url, error in
-                    if let error = error {
-                        print("❌ [ImageUpload] Failed to get download URL: \(error.localizedDescription)")
-                        Task { @MainActor in
-                            progressHandler(UploadProgress(messageId: messageId, progress: 1.0, status: .failed(error)))
-                        }
-                        continuation.resume(throwing: ImageUploadError.urlGenerationFailed)
-                    } else if let url = url {
-                        let urlString = url.absoluteString
-                        print("✅ [ImageUpload] Download URL: \(urlString)")
-                        
-                        Task { @MainActor in
-                            progressHandler(UploadProgress(messageId: messageId, progress: 1.0, status: .completed(url: urlString)))
-                        }
-                        continuation.resume(returning: urlString)
-                    }
+                // Small delay to ensure Firebase Storage finalizes the upload
+                Task {
+                    try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
                     
-                    // Cleanup
-                    self?.uploadTasks.removeValue(forKey: messageId)
+                    // Get download URL with retry logic
+                    self?.getDownloadURL(imageRef: imageRef, messageId: messageId, attempt: 1) { result in
+                        switch result {
+                        case .success(let urlString):
+                            print("✅ [ImageUpload] Download URL: \(urlString)")
+                            Task { @MainActor in
+                                progressHandler(UploadProgress(messageId: messageId, progress: 1.0, status: .completed(url: urlString)))
+                            }
+                            continuation.resume(returning: urlString)
+                        case .failure(let error):
+                            print("❌ [ImageUpload] Failed to get download URL after retries: \(error.localizedDescription)")
+                            Task { @MainActor in
+                                progressHandler(UploadProgress(messageId: messageId, progress: 1.0, status: .failed(error)))
+                            }
+                            continuation.resume(throwing: ImageUploadError.urlGenerationFailed)
+                        }
+                        
+                        // Cleanup
+                        self?.uploadTasks.removeValue(forKey: messageId)
+                    }
                 }
             }
             
@@ -201,6 +204,42 @@ class ImageUploadService {
                 
                 // Cleanup
                 self?.uploadTasks.removeValue(forKey: messageId)
+            }
+        }
+    }
+    
+    // MARK: - Helper Methods
+    
+    /// Get download URL with retry logic (handles Firebase Storage timing issues)
+    private func getDownloadURL(
+        imageRef: StorageReference,
+        messageId: String,
+        attempt: Int,
+        maxAttempts: Int = 3,
+        completion: @escaping (Result<String, Error>) -> Void
+    ) {
+        imageRef.downloadURL { url, error in
+            if let error = error {
+                if attempt < maxAttempts {
+                    print("⚠️ [ImageUpload] Download URL attempt \(attempt) failed, retrying...")
+                    // Exponential backoff: 0.5s, 1s, 2s
+                    let delay = 0.5 * Double(attempt)
+                    Task {
+                        try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                        self.getDownloadURL(
+                            imageRef: imageRef,
+                            messageId: messageId,
+                            attempt: attempt + 1,
+                            maxAttempts: maxAttempts,
+                            completion: completion
+                        )
+                    }
+                } else {
+                    print("❌ [ImageUpload] Download URL failed after \(maxAttempts) attempts")
+                    completion(.failure(error))
+                }
+            } else if let url = url {
+                completion(.success(url.absoluteString))
             }
         }
     }
