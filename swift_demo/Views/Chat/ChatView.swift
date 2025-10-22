@@ -122,51 +122,61 @@ struct ChatHeaderView: View {
     @ObservedObject var viewModel: ChatViewModel
     let recipientName: String
     
+    @State private var recipientUser: User?
+    
     var body: some View {
-        VStack(spacing: 2) {
-            // Title (recipient name or group name)
+        HStack(spacing: 8) {
             if viewModel.isGroup {
-                Button {
-                    // Tappable to show group info - not implemented in this PR
-                } label: {
-                    VStack(spacing: 2) {
-                        Text(viewModel.groupName ?? "Group Chat")
-                            .font(.headline)
-                            .foregroundColor(.primary)
-                        
-                        Text("\(viewModel.participants.count) members")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
+                // PR-16: Group - Just name, NO avatar
+                VStack(alignment: .center, spacing: 2) {
+                    Text(viewModel.groupName ?? "Group Chat")
+                        .font(.headline)
+                    Text("\(viewModel.participants.count) participants")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
                 }
             } else {
-                Text(recipientName)
-                    .font(.headline)
-            }
-            
-            // Status or typing indicator
-            // In Vue: <div v-if="typingText">{{ typingText }}<TypingDots /></div>
-            if let typingText = viewModel.typingText {
-                // Typing indicator
-                HStack(spacing: 4) {
-                    Text(typingText)
-                        .font(.caption)
-                        .foregroundColor(.green)
+                // PR-16: 1-on-1 - Show avatar + name + status
+                AvatarView(user: recipientUser, size: 36)
+                
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(recipientUser?.displayName ?? recipientName)
+                        .font(.headline)
                     
-                    // Animated dots
-                    TypingDotsView()
+                    // Typing indicator or status
+                    if let typingText = viewModel.typingText {
+                        HStack(spacing: 4) {
+                            Text(typingText)
+                                .font(.caption)
+                                .foregroundColor(.green)
+                            TypingDotsView()
+                        }
+                        .transition(.opacity)
+                    } else {
+                        OnlineStatusView(
+                            isOnline: viewModel.recipientOnline,
+                            lastSeen: viewModel.recipientLastSeen
+                        )
+                        .font(.caption)
+                    }
                 }
-                .transition(.opacity)
-            } else if !viewModel.isGroup {
-                // Online status (only for 1-on-1)
-                OnlineStatusView(
-                    isOnline: viewModel.recipientOnline,
-                    lastSeen: viewModel.recipientLastSeen
-                )
-                .font(.caption)
             }
         }
         .animation(.easeInOut(duration: 0.3), value: viewModel.typingText)
+        .task {
+            await loadRecipientUser()
+        }
+    }
+    
+    private func loadRecipientUser() async {
+        guard !viewModel.isGroup else { return }
+        
+        do {
+            recipientUser = try await UserService.shared.fetchUser(byId: viewModel.recipientId)
+            print("✅ [ChatHeader] Loaded recipient user: \(recipientUser?.displayName ?? "Unknown")")
+        } catch {
+            print("❌ [ChatHeader] Failed to load recipient user: \(error)")
+        }
     }
 }
 

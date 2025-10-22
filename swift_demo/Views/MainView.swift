@@ -48,6 +48,14 @@ struct MainView: View {
 struct ProfileView: View {
     @EnvironmentObject var authViewModel: AuthViewModel
     
+    @State private var showingImagePicker = false
+    @State private var selectedImage: UIImage?
+    @State private var showingImageSource = false
+    @State private var imageSourceType: UIImagePickerController.SourceType = .photoLibrary
+    @State private var isUploading = false
+    @State private var uploadError: String?
+    @State private var showingDeleteConfirmation = false
+    
     var currentUser: User? {
         AuthenticationService.shared.currentUser
     }
@@ -55,7 +63,43 @@ struct ProfileView: View {
     var body: some View {
         NavigationStack {
             List {
+                // PR-14: Profile Picture Section
                 Section {
+                    VStack(spacing: 16) {
+                        // Large avatar
+                        AvatarView(user: currentUser, size: AvatarView.sizeExtraLarge)
+                        
+                        // Upload state
+                        if isUploading {
+                            ProgressView("Uploading...")
+                        } else {
+                            // Change Photo button
+                            Button("Change Photo") {
+                                showingImageSource = true
+                            }
+                            .buttonStyle(.borderedProminent)
+                            
+                            // Remove Photo button (only if has photo)
+                            if currentUser?.profileImageUrl != nil {
+                                Button("Remove Photo", role: .destructive) {
+                                    showingDeleteConfirmation = true
+                                }
+                            }
+                        }
+                        
+                        // Error message
+                        if let error = uploadError {
+                            Text(error)
+                                .font(.caption)
+                                .foregroundColor(.red)
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical)
+                }
+                
+                // User Information Section
+                Section("Profile Information") {
                     if let user = currentUser {
                         HStack {
                             Text("Name")
@@ -87,9 +131,9 @@ struct ProfileView: View {
                     }
                 }
                 
-                Section {
+                // Test Notifications Section
+                Section("Notifications") {
                     Button(action: {
-                        // Test system notification
                         NotificationService.shared.showMessageNotification(
                             conversationId: "test-123",
                             senderName: "Test User",
@@ -106,11 +150,10 @@ struct ProfileView: View {
                     }
                     
                     Button(action: {
-                        // Test in-app banner
                         let notification = InAppNotification(
                             conversationId: "test-123",
                             senderName: "Test User",
-                            messageText: "This is a test in-app notification banner! It should appear at the top of the screen.",
+                            messageText: "This is a test in-app notification banner!",
                             isGroup: false
                         )
                         InAppNotificationManager.shared.show(notification)
@@ -122,26 +165,9 @@ struct ProfileView: View {
                             Spacer()
                         }
                     }
-                    
-                    Button(action: {
-                        // Test group notification
-                        let notification = InAppNotification(
-                            conversationId: "test-group-456",
-                            senderName: "Cool Group",
-                            messageText: "Someone sent a message in this group chat!",
-                            isGroup: true
-                        )
-                        InAppNotificationManager.shared.show(notification)
-                    }) {
-                        HStack {
-                            Spacer()
-                            Text("Test Group Banner")
-                                .foregroundColor(.orange)
-                            Spacer()
-                        }
-                    }
                 }
                 
+                // Logout Section
                 Section {
                     Button(action: {
                         authViewModel.logout()
@@ -156,6 +182,138 @@ struct ProfileView: View {
                 }
             }
             .navigationTitle("Profile")
+            // Image source selection
+            .confirmationDialog("Choose Photo Source", isPresented: $showingImageSource) {
+                Button("Take Photo") {
+                    checkCameraPermission()
+                }
+                Button("Choose from Library") {
+                    checkPhotoLibraryPermission()
+                }
+                Button("Cancel", role: .cancel) { }
+            }
+            // Image picker sheet
+            .sheet(isPresented: $showingImagePicker) {
+                ImagePickerView(selectedImage: $selectedImage, sourceType: imageSourceType)
+            }
+            // Handle selected image
+            .onChange(of: selectedImage) { _, newImage in
+                if let image = newImage {
+                    uploadProfileImage(image)
+                }
+            }
+            // Delete confirmation
+            .alert("Remove Profile Picture", isPresented: $showingDeleteConfirmation) {
+                Button("Remove", role: .destructive) {
+                    deleteProfileImage()
+                }
+                Button("Cancel", role: .cancel) { }
+            } message: {
+                Text("Are you sure you want to remove your profile picture?")
+            }
+        }
+    }
+    
+    // MARK: - Permission Checks
+    
+    private func checkCameraPermission() {
+        Task {
+            let granted = await PermissionManager.shared.requestCameraPermission()
+            await MainActor.run {
+                if granted {
+                    imageSourceType = .camera
+                    showingImagePicker = true
+                } else {
+                    PermissionManager.shared.showPermissionDeniedAlert(for: .camera)
+                }
+            }
+        }
+    }
+    
+    private func checkPhotoLibraryPermission() {
+        Task {
+            let granted = await PermissionManager.shared.requestPhotoLibraryPermission()
+            await MainActor.run {
+                if granted {
+                    imageSourceType = .photoLibrary
+                    showingImagePicker = true
+                } else {
+                    PermissionManager.shared.showPermissionDeniedAlert(for: .photoLibrary)
+                }
+            }
+        }
+    }
+    
+    // MARK: - Upload/Delete
+    
+    private func uploadProfileImage(_ image: UIImage) {
+        guard let userId = currentUser?.id else { return }
+        
+        print("📸 [ProfileView] Starting profile image upload...")
+        isUploading = true
+        uploadError = nil
+        
+        Task {
+            do {
+                let url = try await UserService.shared.uploadProfileImage(userId: userId, image: image)
+                print("✅ [ProfileView] Profile image uploaded: \(url)")
+                
+                await MainActor.run {
+                    isUploading = false
+                    selectedImage = nil
+                    
+                    // Force refresh current user
+                    Task {
+                        if let updatedUser = try? await UserService.shared.fetchUser(byId: userId) {
+                            await MainActor.run {
+                                AuthenticationService.shared.currentUser = updatedUser
+                                print("✅ [ProfileView] Current user refreshed with new profile image")
+                            }
+                        }
+                    }
+                }
+            } catch {
+                print("❌ [ProfileView] Upload error: \(error)")
+                await MainActor.run {
+                    isUploading = false
+                    uploadError = "Failed to upload image"
+                }
+            }
+        }
+    }
+    
+    private func deleteProfileImage() {
+        guard let userId = currentUser?.id else { return }
+        
+        print("🗑️ [ProfileView] Deleting profile image...")
+        isUploading = true
+        uploadError = nil
+        
+        Task {
+            do {
+                try await UserService.shared.deleteProfileImage(userId: userId)
+                print("✅ [ProfileView] Profile image deleted")
+                
+                await MainActor.run {
+                    isUploading = false
+                    
+                    // Force refresh current user
+                    Task {
+                        if let updatedUser = try? await UserService.shared.fetchUser(byId: userId) {
+                            await MainActor.run {
+                                AuthenticationService.shared.currentUser = updatedUser
+                                print("✅ [ProfileView] Current user refreshed (image removed)")
+                            }
+                        }
+                    }
+                }
+            } catch {
+                print("❌ [ProfileView] Delete error: \(error)")
+                await MainActor.run {
+                    isUploading = false
+                    uploadError = "Failed to delete image"
+                }
+            }
         }
     }
 }

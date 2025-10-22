@@ -18,20 +18,21 @@ service firebase.storage {
     }
     
     // Profile pictures: Users can only write their own, anyone authenticated can read
-    // Path: /profile_pictures/{userId}.jpg
+    // Path: /profile_pictures/{fileName} (e.g., userId.jpg)
     // Max size: 5MB
-    match /profile_pictures/{userId} {
+    // Note: fileName will be "userId.jpg", we verify it starts with the authenticated user's ID
+    match /profile_pictures/{fileName} {
       allow read: if isAuthenticated();
       allow write: if isAuthenticated() 
-                   && request.auth.uid == userId
+                   && fileName.matches(request.auth.uid + '\\..+')
                    && isValidSize(5)
                    && isImage();
     }
     
     // Message images: Any authenticated user can upload, all can read
-    // Path: /images/{conversationId}/{messageId}.jpg
+    // Path: /images/{conversationId}/{fileName} (e.g., messageId.jpg)
     // Max size: 10MB
-    match /images/{conversationId}/{messageId} {
+    match /images/{conversationId}/{fileName} {
       allow read: if isAuthenticated();
       allow write: if isAuthenticated()
                    && isValidSize(10)

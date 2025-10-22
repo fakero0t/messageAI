@@ -10,30 +10,23 @@ import SwiftUI
 struct ConversationRowView: View {
     let conversationDetail: ConversationWithDetails
     
+    @State private var otherUser: User?
+    
     var body: some View {
         HStack(spacing: 12) {
-            // Avatar
+            // PR-15: Avatar
             if conversationDetail.conversation.isGroup {
-                // Group avatar
-                Circle()
-                    .fill(Color.green)
-                    .frame(width: 50, height: 50)
-                    .overlay {
-                        Image(systemName: "person.3.fill")
-                            .foregroundColor(.white)
-                            .font(.title3)
-                    }
+                // Group icon (no avatar, just colored circle with icon)
+                ZStack {
+                    Circle()
+                        .fill(Color.blue.opacity(0.2))
+                        .frame(width: AvatarView.sizeMedium, height: AvatarView.sizeMedium)
+                    Image(systemName: "person.3.fill")
+                        .foregroundColor(.blue)
+                }
             } else {
-                // Individual avatar
-                Circle()
-                    .fill(avatarColor)
-                    .frame(width: 50, height: 50)
-                    .overlay {
-                        Text(conversationDetail.displayAvatar)
-                            .foregroundColor(.white)
-                            .font(.title3)
-                            .fontWeight(.semibold)
-                    }
+                // User avatar with profile picture support
+                AvatarView(user: otherUser, size: AvatarView.sizeMedium)
             }
             
             // Content
@@ -55,18 +48,11 @@ struct ConversationRowView: View {
                 }
                 
                 HStack {
-                    if let lastMessage = conversationDetail.conversation.lastMessageText {
-                        Text(lastMessage)
-                            .font(.subheadline)
-                            .foregroundColor(hasUnreadMessages ? .primary : .secondary)
-                            .fontWeight(hasUnreadMessages ? .medium : .regular)
-                            .lineLimit(1)
-                    } else {
-                        Text("No messages yet")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
-                            .italic()
-                    }
+                    Text(lastMessagePreview)
+                        .font(.subheadline)
+                        .foregroundColor(hasUnreadMessages ? .primary : .secondary)
+                        .fontWeight(hasUnreadMessages ? .medium : .regular)
+                        .lineLimit(1)
                     
                     Spacer()
                     
@@ -89,17 +75,49 @@ struct ConversationRowView: View {
                 ? Color.blue.opacity(0.05) 
                 : Color.clear
         )
+        .task {
+            await loadOtherUser()
+        }
+    }
+    
+    // PR-15: Last message preview with image support
+    private var lastMessagePreview: String {
+        if let lastMessage = conversationDetail.conversation.lastMessageText {
+            // Check if it's "Image" (from image messages)
+            if lastMessage == "Image" {
+                return "📷 Image"
+            }
+            return lastMessage
+        } else {
+            return "No messages yet"
+        }
     }
     
     private var hasUnreadMessages: Bool {
         conversationDetail.conversation.unreadCount > 0
     }
     
-    private var avatarColor: Color {
-        // Generate color based on conversation ID for consistency
-        let colors: [Color] = [.blue, .green, .orange, .purple, .pink, .red]
-        let index = abs(conversationDetail.id.hashValue) % colors.count
-        return colors[index]
+    // PR-15: Load other user data for avatar
+    private func loadOtherUser() async {
+        guard !conversationDetail.conversation.isGroup else { return }
+        
+        // Get current user ID
+        let currentUserId = AuthenticationService.shared.currentUser?.id ?? ""
+        
+        // Find other user ID from participants
+        let otherUserId = conversationDetail.conversation.participantIds.first { $0 != currentUserId }
+        
+        guard let userId = otherUserId else { return }
+        
+        // Fetch user from UserService
+        do {
+            let user = try await UserService.shared.fetchUser(byId: userId)
+            await MainActor.run {
+                self.otherUser = user
+            }
+        } catch {
+            print("❌ [ConversationRow] Failed to load user \(userId): \(error)")
+        }
     }
 }
 
