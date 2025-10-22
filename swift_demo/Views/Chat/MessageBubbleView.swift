@@ -20,6 +20,7 @@ struct MessageBubbleView: View {
     @State private var isLoading = false
     @State private var translatedEN: String = ""
     @State private var translatedKA: String = ""
+    @State private var nlSheetText: String? = nil
     
     var body: some View {
         HStack {
@@ -48,13 +49,7 @@ struct MessageBubbleView: View {
                     )
                 } else if let text = message.text {
                     ZStack {
-                        if isLoading {
-                            ProgressView()
-                                .padding(12)
-                                .background(bubbleColor)
-                                .foregroundColor(textColor)
-                                .cornerRadius(16)
-                        } else if isExpanded {
+                        if isExpanded {
                             VStack(alignment: .leading, spacing: 8) {
                                 HStack(alignment: .top, spacing: 6) {
                                     Text("🇺🇸")
@@ -85,6 +80,12 @@ struct MessageBubbleView: View {
                     }
                     .contextMenu {
                         Button("Show Translation") { handleDoubleTap() }
+                        if let text = message.text {
+                            Button("Explain Slang/Idioms") { runNL(intent: "explain_slang", text: text) }
+                            Button("Adjust Tone → Formal") { runNL(intent: "adjust_tone_formal", text: text) }
+                            Button("Adjust Tone → Casual") { runNL(intent: "adjust_tone_casual", text: text) }
+                            Button("Cultural Context Hint") { runNL(intent: "cultural_hint", text: text) }
+                        }
                     }
                 }
                 
@@ -116,6 +117,12 @@ struct MessageBubbleView: View {
                 localImage: nil,
                 message: message
             )
+        }
+        .sheet(item: Binding(
+            get: { nlSheetText.map { NLSheetWrapper(text: $0) } },
+            set: { nlSheetText = $0?.text }
+        )) { payload in
+            ScrollView { Text(payload.text).padding() }
         }
     }
     
@@ -193,8 +200,11 @@ struct MessageBubbleView: View {
             return
         }
         
-        print("🌐 [MessageBubble] Cache miss → requesting SSE translation")
-        isLoading = true
+        print("🌐 [MessageBubble] Cache miss → expand immediately and request SSE translation")
+        // Expand immediately with placeholders so there's no loading state
+        translatedEN = ""
+        translatedKA = ""
+        withAnimation(.spring(response: 0.3)) { isExpanded = true }
         let tsMs = Int64(Date().timeIntervalSince1970 * 1000)
         TranslationTransport.shared.requestTranslation(
             messageId: message.id,
@@ -204,7 +214,6 @@ struct MessageBubbleView: View {
         ) { result in
             print("📨 [MessageBubble] SSE completion for message \(message.id) result=\(result != nil)")
             DispatchQueue.main.async {
-                self.isLoading = false
                 guard let result = result else { return }
                 self.translatedEN = result.translations.en
                 self.translatedKA = result.translations.ka
@@ -214,5 +223,27 @@ struct MessageBubbleView: View {
             }
         }
     }
+
+    private func runNL(intent: String, text: String) {
+        let start = Date()
+        let tsMs = Int64(start.timeIntervalSince1970 * 1000)
+        TranslationTransport.shared.requestNLCommand(
+            intent: intent,
+            text: text,
+            conversationId: message.conversationId,
+            timestampMs: tsMs
+        ) { result in
+            DispatchQueue.main.async {
+                let elapsed = Int(Date().timeIntervalSince(start) * 1000)
+                TranslationAnalytics.shared.logNLCommand(intent: intent, latencyMs: elapsed)
+                self.nlSheetText = result
+            }
+        }
+    }
+}
+
+private struct NLSheetWrapper: Identifiable {
+    let id = UUID()
+    let text: String
 }
 

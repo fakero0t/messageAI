@@ -25,8 +25,8 @@ final class TranslationCacheService {
         )
     }
     
-    func store(english: String, georgian: String, confidence: Double) {
-        let hash = TextHashing.md5(english)
+    func store(sourceText: String, english: String, georgian: String, confidence: Double) {
+        let hash = TextHashing.md5(sourceText)
         let entity = TranslationCacheEntity(textHash: hash, englishText: english, georgianText: georgian, confidence: confidence)
         context.insert(entity)
         try? context.save()

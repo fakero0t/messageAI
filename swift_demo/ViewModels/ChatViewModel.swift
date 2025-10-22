@@ -251,7 +251,15 @@ class ChatViewModel: ObservableObject {
                     timestampMs: tsMs
                 ) { result in
                     // For PR04 we do not update UI; caching happens server-side/on-demand later
-                    _ = result
+                    if let result = result {
+                        // Immediately store into local cache so UI double-tap becomes instant
+                        TranslationCacheService.shared.store(
+                            sourceText: text,
+                            english: result.translations.en,
+                            georgian: result.translations.ka,
+                            confidence: 1.0
+                        )
+                    }
                 }
                 
                 print("✅ Message sent successfully")

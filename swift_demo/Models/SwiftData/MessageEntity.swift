@@ -23,6 +23,12 @@ final class MessageEntity {
     var imageLocalPath: String? // Local file path for offline queue
     var imageWidth: Double? // Image dimensions for display
     var imageHeight: Double?
+
+    // AI Translation fields
+    var translatedEn: String?
+    var translatedKa: String?
+    var originalLang: String?
+    var translatedAt: Date?
     
     @Relationship(deleteRule: .nullify, inverse: \ConversationEntity.messages)
     var conversation: ConversationEntity?
@@ -58,7 +64,11 @@ final class MessageEntity {
         imageUrl: String? = nil,
         imageLocalPath: String? = nil,
         imageWidth: Double? = nil,
-        imageHeight: Double? = nil
+        imageHeight: Double? = nil,
+        translatedEn: String? = nil,
+        translatedKa: String? = nil,
+        originalLang: String? = nil,
+        translatedAt: Date? = nil
     ) {
         self.id = id
         self.conversationId = conversationId
@@ -71,6 +81,10 @@ final class MessageEntity {
         self.imageLocalPath = imageLocalPath
         self.imageWidth = imageWidth
         self.imageHeight = imageHeight
+        self.translatedEn = translatedEn
+        self.translatedKa = translatedKa
+        self.originalLang = originalLang
+        self.translatedAt = translatedAt
     }
 }
 
