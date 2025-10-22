@@ -91,12 +91,22 @@ struct ChatView: View {
             // PR-3: Stop typing when leaving chat (call via public method)
             viewModel.stopTypingIndicator()
         }
+        .onChange(of: isInputFocused) { oldValue, newValue in
+            // Stop typing when keyboard is dismissed
+            if !newValue {
+                print("⌨️ [ChatView] Keyboard dismissed, stopping typing indicator")
+                viewModel.stopTypingIndicator()
+            }
+        }
         .onChange(of: scenePhase) { oldPhase, newPhase in
             if newPhase == .active {
                 viewModel.markMessagesAsRead()
                 notificationService.currentConversationId = viewModel.conversationId
             } else if newPhase == .background || newPhase == .inactive {
                 notificationService.currentConversationId = nil
+                // Stop typing when app goes to background
+                print("📱 [ChatView] App backgrounded, stopping typing indicator")
+                viewModel.stopTypingIndicator()
             }
         }
     }
@@ -124,26 +134,20 @@ struct ChatHeaderView: View {
     
     @State private var recipientUser: User?
     
+    // Computed property to check if this is a self-chat
+    private var isSelfChat: Bool {
+        viewModel.recipientId == viewModel.currentUserId
+    }
+    
     var body: some View {
         HStack(spacing: 8) {
             if viewModel.isGroup {
-                // PR-16: Group - Just name, NO avatar
+                // PR-16: Group - Show name and typing indicator
                 VStack(alignment: .center, spacing: 2) {
                     Text(viewModel.groupName ?? "Group Chat")
                         .font(.headline)
-                    Text("\(viewModel.participants.count) participants")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-            } else {
-                // PR-16: 1-on-1 - Show avatar + name + status
-                AvatarView(user: recipientUser, size: 36)
-                
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(recipientUser?.displayName ?? recipientName)
-                        .font(.headline)
                     
-                    // Typing indicator or status
+                    // Show typing indicator or participant count
                     if let typingText = viewModel.typingText {
                         HStack(spacing: 4) {
                             Text(typingText)
@@ -153,6 +157,29 @@ struct ChatHeaderView: View {
                         }
                         .transition(.opacity)
                     } else {
+                        Text("\(viewModel.participants.count) participants")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+            } else {
+                // PR-16: 1-on-1 - Show avatar + name + status
+                AvatarView(user: recipientUser, size: 36)
+                
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(recipientUser?.displayName ?? recipientName)
+                        .font(.headline)
+                    
+                    // Typing indicator or status (hide status for self-chats)
+                    if let typingText = viewModel.typingText {
+                        HStack(spacing: 4) {
+                            Text(typingText)
+                                .font(.caption)
+                                .foregroundColor(.green)
+                            TypingDotsView()
+                        }
+                        .transition(.opacity)
+                    } else if !isSelfChat {
                         OnlineStatusView(
                             isOnline: viewModel.recipientOnline,
                             lastSeen: viewModel.recipientLastSeen

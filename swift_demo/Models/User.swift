@@ -36,9 +36,23 @@ struct User: Codable, Identifiable, Hashable {
 
 extension Date {
     func relativeTimeString() -> String {
+        let now = Date()
+        let timeInterval = now.timeIntervalSince(self)
+        
+        // Ensure we never show "0s" or "in 0s" - minimum is "1s ago"
+        guard timeInterval > 0 else {
+            return "1s ago"
+        }
+        
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .abbreviated
-        return formatter.localizedString(for: self, relativeTo: Date())
+        
+        // For very recent times (< 1 second), show "1s ago"
+        if timeInterval < 1.0 {
+            return "1s ago"
+        }
+        
+        return formatter.localizedString(for: self, relativeTo: now)
     }
 }
 

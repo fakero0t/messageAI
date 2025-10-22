@@ -121,9 +121,9 @@ class TypingService: ObservableObject {
         print("👂 [Observer] Starting to observe path: \(path)")
         print("👂 [Observer] Current user ID (will be excluded): \(currentUserId)")
         
-        // Listen for value changes
+        // Listen for value changes (initial load and updates)
         // In Vue: onValue(ref(db, `typing/${conversationId}`), (snapshot) => { ... })
-        let handle = typingRef.observe(.value) { [weak self] snapshot in
+        let valueHandle = typingRef.observe(.value) { [weak self] snapshot in
             guard let self = self else { return }
             
             print("📨 [Observer] RECEIVED DATA from Firebase!")
@@ -190,24 +190,54 @@ class TypingService: ObservableObject {
             }
         }
         
-        // Store handle for cleanup
-        activeListeners[listenerKey] = handle
-        print("✅ [Observer] Listener registered successfully")
+        // ALSO listen for child removals for INSTANT typing indicator clearing
+        // This fires immediately when someone stops typing, without waiting for next .value event
+        let removalHandle = typingRef.observe(.childRemoved) { [weak self] snapshot in
+            guard let self = self else { return }
+            let removedUserId = snapshot.key
+            
+            print("🗑️ [Observer] INSTANT REMOVAL detected for user: \(removedUserId)")
+            
+            // Immediately remove from typing users array
+            DispatchQueue.main.async {
+                if var users = self.typingUsers[conversationId] {
+                    let beforeCount = users.count
+                    users.removeAll { $0.id == removedUserId }
+                    if beforeCount != users.count {
+                        self.typingUsers[conversationId] = users
+                        print("✅ [Observer] Instantly cleared typing indicator (removed user)")
+                    }
+                }
+            }
+        }
+        
+        // Store BOTH handles for cleanup
+        activeListeners[listenerKey] = valueHandle
+        activeListeners["\(listenerKey)_removal"] = removalHandle
+        print("✅ [Observer] Listeners registered successfully (value + removal)")
     }
     
     /// Stop observing typing users for a conversation
     /// In Vue: like calling unsubscribe() or cleanup function
     func stopObservingTypingUsers(conversationId: String) {
         let listenerKey = "observe_\(conversationId)"
+        let removalKey = "\(listenerKey)_removal"
         
+        // Remove value observer
         if let handle = activeListeners[listenerKey] {
             database.child("typing").child(conversationId).removeObserver(withHandle: handle)
             activeListeners.removeValue(forKey: listenerKey)
-            
-            // Clear typing users for this conversation
-            DispatchQueue.main.async { [weak self] in
-                self?.typingUsers.removeValue(forKey: conversationId)
-            }
+        }
+        
+        // Remove child removal observer
+        if let handle = activeListeners[removalKey] {
+            database.child("typing").child(conversationId).removeObserver(withHandle: handle)
+            activeListeners.removeValue(forKey: removalKey)
+        }
+        
+        // Clear typing users for this conversation
+        DispatchQueue.main.async { [weak self] in
+            self?.typingUsers.removeValue(forKey: conversationId)
         }
     }
     
@@ -306,7 +336,7 @@ class TypingService: ObservableObject {
     /// In Vue: computed(() => formatTypingText(typingUsers.value[conversationId]))
     ///
     /// - Parameter conversationId: The conversation ID
-    /// - Returns: Formatted string like "Alice is typing..."
+    /// - Returns: Formatted string like "Alice is typing..." or "Alice, Bob, +2 more are typing..."
     func formatTypingText(for conversationId: String) -> String? {
         guard let users = typingUsers[conversationId], !users.isEmpty else { return nil }
         
@@ -319,9 +349,13 @@ class TypingService: ObservableObject {
         case 2:
             // "Alice and Bob are typing..."
             return "\(names[0]) and \(names[1]) are typing..."
+        case 3:
+            // "Alice, Bob, and Charlie are typing..."
+            return "\(names[0]), \(names[1]), and \(names[2]) are typing..."
         default:
-            // "Alice and 2 others are typing..."
-            return "\(names[0]) and \(names.count - 1) others are typing..."
+            // "Alice, Bob, +2 more are typing..."
+            let additionalCount = names.count - 2
+            return "\(names[0]), \(names[1]), +\(additionalCount) more are typing..."
         }
     }
     

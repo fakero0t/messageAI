@@ -91,8 +91,8 @@ class ChatViewModel: ObservableObject {
                         }
                         print("  Total participants: \(participants.count)")
                     } else {
-                        // Only observe recipient status for one-on-one chats
-                        if !recipientId.isEmpty {
+                        // Only observe recipient status for one-on-one chats (but not self-chats)
+                        if !recipientId.isEmpty && recipientId != currentUserId {
                             await MainActor.run {
                                 observeRecipientStatus()
                             }
@@ -100,8 +100,8 @@ class ChatViewModel: ObservableObject {
                     }
                 } else {
                     // No conversation found in local storage (new chat)
-                    // Assume one-on-one if recipientId is not empty
-                    if !recipientId.isEmpty {
+                    // Assume one-on-one if recipientId is not empty (but not self-chats)
+                    if !recipientId.isEmpty && recipientId != currentUserId {
                         await MainActor.run {
                             observeRecipientStatus()
                         }
@@ -702,23 +702,20 @@ class ChatViewModel: ObservableObject {
                 displayName: currentUserName
             )
             
-            // Set timer to stop typing after 2.5 seconds of no changes (prevents stuck indicators)
-            // In Vue: debounceTimer = setTimeout(() => stopTyping(), 2500)
-            typingDebounceTimer = Timer.scheduledTimer(withTimeInterval: 2.5, repeats: false) { [weak self] _ in
+            // Set timer to stop typing after 2 seconds of no changes (prevents stuck indicators)
+            // Reduced from 2.5s to 2s to be faster and sync with TypingService's 3s timeout
+            typingDebounceTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: false) { [weak self] _ in
                 guard let self = self else { return }
-                print("⏱️ [Typing] Auto-stopping typing after 2.5s")
+                print("⏱️ [Typing] Auto-stopping typing after 2s of inactivity")
                 self.typingService.stopTyping(
                     conversationId: self.conversationId,
                     userId: self.currentUserId
                 )
             }
         } else {
-            // User cleared text - stop broadcasting
+            // Text field is empty - stop typing immediately
             print("🛑 [Typing] Stopping typing indicator (text cleared)")
-            typingService.stopTyping(
-                conversationId: conversationId,
-                userId: currentUserId
-            )
+            stopTypingIndicator()
         }
     }
     

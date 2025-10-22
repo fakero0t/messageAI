@@ -12,6 +12,7 @@ import FirebaseFirestore
 struct ConversationWithDetails: Identifiable, Hashable {
     let conversation: ConversationEntity
     let participants: [User]
+    let isSelfChat: Bool
     
     var id: String { conversation.id }
     
@@ -33,6 +34,9 @@ struct ConversationWithDetails: Identifiable, Hashable {
                 let names = participants.map { $0.displayName }
                 return names.isEmpty ? "Group Chat" : names.joined(separator: ", ")
             }
+        } else if isSelfChat {
+            // Self-chat: show special label
+            return "You (Notes to Self)"
         } else {
             // One-on-one: other participant's name
             return participants.first?.displayName ?? "Unknown"
@@ -179,8 +183,19 @@ class ConversationListViewModel: ObservableObject {
     private func loadConversationDetails(_ conversation: ConversationEntity) async throws -> ConversationWithDetails {
         let currentUserId = AuthenticationService.shared.currentUser?.id ?? ""
         
-        // Get other participants (exclude current user)
-        let otherParticipants = conversation.participantIds.filter { $0 != currentUserId }
+        // Check if this is a self-chat (conversation with yourself)
+        let uniqueParticipants = Set(conversation.participantIds)
+        let isSelfChat = uniqueParticipants.count == 1 && uniqueParticipants.first == currentUserId
+        
+        // Get other participants (exclude current user, unless it's a self-chat)
+        let otherParticipants: [String]
+        if isSelfChat {
+            // For self-chats, include the current user
+            otherParticipants = [currentUserId]
+        } else {
+            // Normal behavior: exclude current user
+            otherParticipants = conversation.participantIds.filter { $0 != currentUserId }
+        }
         
         // Fetch user details
         var participantUsers: [User] = []
@@ -204,7 +219,8 @@ class ConversationListViewModel: ObservableObject {
         
         return ConversationWithDetails(
             conversation: conversation,
-            participants: participantUsers
+            participants: participantUsers,
+            isSelfChat: isSelfChat
         )
     }
     
