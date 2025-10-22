@@ -53,10 +53,11 @@ struct ChatView: View {
             
             Divider()
             
-            // In Vue: <MessageInput v-model:text="messageText" v-model:focused="isInputFocused" @send="sendMessage" @textChange="viewModel.handleTextFieldChange" />
+            // In Vue: <MessageInput v-model:text="messageText" v-model:focused="isInputFocused" @send="sendMessage" @sendImage="sendImage" @textChange="viewModel.handleTextFieldChange" />
             MessageInputView(
                 text: $messageText,
                 onSend: sendMessage,
+                onSendImage: sendImage, // PR-9
                 onTextChange: viewModel.handleTextFieldChange, // PR-3
                 isFocused: $isInputFocused
             )
@@ -104,6 +105,12 @@ struct ChatView: View {
         guard !messageText.isEmpty else { return }
         viewModel.sendMessage(text: messageText)
         messageText = ""
+    }
+    
+    // PR-9: Send image message
+    private func sendImage(_ image: UIImage) {
+        print("📸 [ChatView] sendImage called")
+        viewModel.sendImage(image)
     }
 }
 

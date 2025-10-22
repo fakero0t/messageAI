@@ -29,18 +29,18 @@ struct MessageBubbleView: View {
                         .padding(.leading, 4)
                 }
                 
-                // PR-7: Handle optional text (image messages may not have text)
-                if let text = message.text {
+                // PR-9: Display image or text message
+                if message.isImageMessage {
+                    ImageMessageView(
+                        message: message,
+                        isFromCurrentUser: isFromCurrentUser,
+                        onTap: {
+                            // TODO: PR-10 - Full screen image viewer
+                            print("🖼️ Image tapped: \(message.id)")
+                        }
+                    )
+                } else if let text = message.text {
                     Text(text)
-                        .padding(12)
-                        .background(bubbleColor)
-                        .foregroundColor(textColor)
-                        .cornerRadius(16)
-                } else if message.isImageMessage {
-                    // Placeholder for image messages (actual image display in PR-9)
-                    Text("[Image]")
-                        .font(.caption)
-                        .italic()
                         .padding(12)
                         .background(bubbleColor)
                         .foregroundColor(textColor)

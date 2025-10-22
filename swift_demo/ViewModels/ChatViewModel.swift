@@ -7,6 +7,7 @@
 
 import Foundation
 import Combine
+import UIKit
 
 @MainActor
 class ChatViewModel: ObservableObject {
@@ -22,8 +23,10 @@ class ChatViewModel: ObservableObject {
     @Published var participants: [User] = []
     
     // Typing indicator (PR-3)
-    // In Vue: const typingText = ref<string | null>(null)
     @Published var typingText: String?
+    
+    // Image upload progress (PR-9)
+    @Published var uploadProgress: [String: Double] = [:]
     
     let recipientId: String
     let currentUserId: String
@@ -38,6 +41,7 @@ class ChatViewModel: ObservableObject {
     private let userService = UserService.shared
     private let notificationService = NotificationService.shared
     private let typingService = TypingService.shared // PR-3
+    private let imageUploadService = ImageUploadService.shared // PR-9
     private var typingDebounceTimer: Timer? // PR-3
     private var cancellables = Set<AnyCancellable>()
     
@@ -232,6 +236,104 @@ class ChatViewModel: ObservableObject {
                 updateMessageStatus(messageId: messageId, status: .failed)
                 errorMessage = "Failed to queue message"
                 print("❌ Failed to queue: \(error)")
+            }
+        }
+    }
+    
+    // PR-9: Send image message
+    func sendImage(_ image: UIImage) {
+        print("📸 [ChatViewModel] sendImage called")
+        let messageId = UUID().uuidString
+        
+        Task {
+            do {
+                // 1. Compress and save locally
+                guard let imagePath = try? ImageFileManager.shared.saveImage(image, withId: messageId) else {
+                    errorMessage = "Failed to process image"
+                    print("❌ Failed to save image locally")
+                    return
+                }
+                
+                let dimensions = ImageCompressor.getDimensions(image)
+                print("📸 Image dimensions: \(Int(dimensions.width))x\(Int(dimensions.height))")
+                
+                // 2. Create optimistic message (shows immediately with local path)
+                let optimisticMessage = MessageEntity(
+                    id: messageId,
+                    conversationId: conversationId,
+                    senderId: currentUserId,
+                    text: nil, // Image-only message
+                    timestamp: Date(),
+                    status: .pending,
+                    imageLocalPath: imagePath.path,
+                    imageWidth: dimensions.width,
+                    imageHeight: dimensions.height
+                )
+                
+                messages.append(optimisticMessage)
+                print("✅ Optimistic image message added to UI")
+                
+                // 3. Save to local storage
+                try await MainActor.run {
+                    try localStorage.saveMessage(optimisticMessage)
+                }
+                print("✅ Image message saved to local storage")
+                
+                // 4. Upload to Firebase Storage
+                print("☁️ Starting upload to Firebase Storage...")
+                let downloadUrl = try await imageUploadService.uploadImage(
+                    image,
+                    messageId: messageId,
+                    conversationId: conversationId,
+                    progressHandler: { [weak self] progress in
+                        Task { @MainActor in
+                            self?.uploadProgress[messageId] = progress.progress
+                            print("📊 Upload progress: \(Int(progress.progress * 100))%")
+                        }
+                    }
+                )
+                
+                print("✅ Image uploaded, URL: \(downloadUrl)")
+                
+                // 5. Send to Firestore
+                try await messageService.sendImageMessage(
+                    messageId: messageId,
+                    imageUrl: downloadUrl,
+                    conversationId: conversationId,
+                    senderId: currentUserId,
+                    recipientId: recipientId,
+                    imageWidth: dimensions.width,
+                    imageHeight: dimensions.height
+                )
+                
+                print("✅ Image message sent to Firestore")
+                
+                // 6. Update local message with URL
+                try await MainActor.run {
+                    try localStorage.updateImageMessage(
+                        messageId: messageId,
+                        imageUrl: downloadUrl,
+                        status: .delivered
+                    )
+                }
+                
+                // 7. Update UI
+                if let index = messages.firstIndex(where: { $0.id == messageId }) {
+                    messages[index].imageUrl = downloadUrl
+                    messages[index].status = .delivered
+                }
+                
+                // 8. Clean up local file (optional, can keep for caching)
+                // try? ImageFileManager.shared.deleteImage(withId: messageId)
+                
+                uploadProgress.removeValue(forKey: messageId)
+                print("✅ Image message flow complete")
+                
+            } catch {
+                print("❌ Image send failed: \(error)")
+                errorMessage = "Failed to send image"
+                updateMessageStatus(messageId: messageId, status: .failed)
+                uploadProgress.removeValue(forKey: messageId)
             }
         }
     }

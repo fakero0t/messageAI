@@ -67,6 +67,19 @@ class LocalStorageService {
         }
     }
     
+    // PR-9: Update image message with Firebase Storage URL
+    func updateImageMessage(messageId: String, imageUrl: String, status: MessageStatus) throws {
+        let predicate = #Predicate<MessageEntity> { $0.id == messageId }
+        let descriptor = FetchDescriptor<MessageEntity>(predicate: predicate)
+        
+        if let message = try modelContext.fetch(descriptor).first {
+            message.imageUrl = imageUrl
+            message.status = status
+            try modelContext.save()
+            print("✅ [LocalStorage] Updated image message with URL")
+        }
+    }
+    
     func messageExists(messageId: String) throws -> Bool {
         let predicate = #Predicate<MessageEntity> { $0.id == messageId }
         let descriptor = FetchDescriptor<MessageEntity>(predicate: predicate)
