@@ -79,8 +79,10 @@ struct ConversationListView: View {
             }
             .sheet(isPresented: $showNewChat) {
                 NewChatView { conversationId, user in
-                    // Handle conversation creation
+                    // Handle conversation creation (both 1-on-1 and group)
                     pendingNavigation = PendingNavigation(conversationId: conversationId, user: user)
+                    // Refresh the conversation list to show the new chat
+                    viewModel.loadConversations()
                 }
             }
             .refreshable {

@@ -76,14 +76,49 @@ class ConversationService {
         let snapshot = try await conversationRef.getDocument()
         
         if !snapshot.exists {
-            // Create new conversation
+            // Create new conversation in Firestore
             let conversationData: [String: Any] = [
                 "id": conversationId,
                 "participants": [userId1, userId2],
-                "isGroup": false
+                "isGroup": false,
+                "lastMessageTime": FieldValue.serverTimestamp()
             ]
             try await conversationRef.setData(conversationData)
-            print("🆕 Created new conversation: \(conversationId)")
+            print("🆕 Created new conversation in Firestore: \(conversationId)")
+            
+            // Immediately save to local storage so it appears in the list
+            try await MainActor.run {
+                do {
+                    let conversation = ConversationEntity(
+                        id: conversationId,
+                        participantIds: [userId1, userId2],
+                        isGroup: false
+                    )
+                    conversation.lastMessageTime = Date()
+                    try localStorage.saveConversation(conversation)
+                    print("✅ Saved new conversation to local storage: \(conversationId)")
+                } catch {
+                    print("⚠️ Error saving conversation to local storage: \(error)")
+                    // Don't throw - conversation exists in Firestore and will sync eventually
+                }
+            }
+        } else {
+            print("✅ Conversation already exists: \(conversationId)")
+            
+            // Make sure it's in local storage
+            try await MainActor.run {
+                if (try? localStorage.fetchConversation(byId: conversationId)) == nil {
+                    // Not in local storage, create it
+                    print("📥 Conversation exists in Firestore but not local - syncing...")
+                    let conversation = ConversationEntity(
+                        id: conversationId,
+                        participantIds: [userId1, userId2],
+                        isGroup: false
+                    )
+                    conversation.lastMessageTime = Date()
+                    try? localStorage.saveConversation(conversation)
+                }
+            }
         }
         
         return conversationId

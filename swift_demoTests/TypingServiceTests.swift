@@ -417,7 +417,7 @@ final class TypingServiceTests: XCTestCase {
     
     func testFormatTypingText_OneUser() {
         // Given: One user typing
-        let user1 = User(id: testUserId1, email: "", displayName: testUserName1, online: true)
+        let user1 = User(id: testUserId1, email: "", username: "alice", displayName: testUserName1, online: true)
         typingService.typingUsers[testConversationId] = [user1]
         
         // When: Format text
@@ -429,8 +429,8 @@ final class TypingServiceTests: XCTestCase {
     
     func testFormatTypingText_TwoUsers() {
         // Given: Two users typing
-        let user1 = User(id: testUserId1, email: "", displayName: testUserName1, online: true)
-        let user2 = User(id: testUserId2, email: "", displayName: testUserName2, online: true)
+        let user1 = User(id: testUserId1, email: "", username: "alice", displayName: testUserName1, online: true)
+        let user2 = User(id: testUserId2, email: "", username: "bob", displayName: testUserName2, online: true)
         typingService.typingUsers[testConversationId] = [user1, user2]
         
         // When: Format text
@@ -442,9 +442,9 @@ final class TypingServiceTests: XCTestCase {
     
     func testFormatTypingText_ThreeOrMoreUsers() {
         // Given: Three users typing
-        let user1 = User(id: testUserId1, email: "", displayName: testUserName1, online: true)
-        let user2 = User(id: testUserId2, email: "", displayName: testUserName2, online: true)
-        let user3 = User(id: testUserId3, email: "", displayName: testUserName3, online: true)
+        let user1 = User(id: testUserId1, email: "", username: "alice", displayName: testUserName1, online: true)
+        let user2 = User(id: testUserId2, email: "", username: "bob", displayName: testUserName2, online: true)
+        let user3 = User(id: testUserId3, email: "", username: "charlie", displayName: testUserName3, online: true)
         typingService.typingUsers[testConversationId] = [user1, user2, user3]
         
         // When: Format text

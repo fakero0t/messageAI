@@ -9,7 +9,7 @@ import SwiftUI
 
 struct NewChatView: View {
     @Environment(\.dismiss) var dismiss
-    @State private var userIdOrEmail = ""
+    @State private var searchText = ""
     @State private var errorMessage: String?
     @State private var isLoading = false
     @State private var showCreateGroup = false
@@ -25,7 +25,7 @@ struct NewChatView: View {
                     Text("Start One-on-One Chat")
                         .font(.headline)
                     
-                    Text("Enter the user ID or email of the person you want to chat with")
+                    Text("Enter username (e.g., @john_doe), email, or user ID")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
@@ -33,7 +33,7 @@ struct NewChatView: View {
                 .padding(.horizontal)
                 .padding(.top)
                 
-                TextField("User ID or Email", text: $userIdOrEmail)
+                TextField("Username, Email, or User ID", text: $searchText)
                     .textFieldStyle(.roundedBorder)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
@@ -63,7 +63,7 @@ struct NewChatView: View {
                 .foregroundColor(.white)
                 .cornerRadius(10)
                 .padding(.horizontal)
-                .disabled(userIdOrEmail.isEmpty || isLoading)
+                .disabled(searchText.isEmpty || isLoading)
                 
                 // Divider
                 HStack {
@@ -106,7 +106,15 @@ struct NewChatView: View {
                 }
             }
             .sheet(isPresented: $showCreateGroup) {
-                CreateGroupView()
+                CreateGroupView { groupId, groupName in
+                    // Navigate to the newly created group chat
+                    onConversationCreated?(groupId, User(
+                        id: groupId,
+                        email: "",
+                        username: "group",
+                        displayName: groupName
+                    ))
+                }
             }
         }
     }
@@ -116,9 +124,28 @@ struct NewChatView: View {
             isLoading = true
             errorMessage = nil
             
-            // Try as user ID first
+            // Normalize search text
+            var searchQuery = searchText.trimmingCharacters(in: .whitespaces)
+            
+            // Remove @ prefix if searching by username
+            if searchQuery.hasPrefix("@") {
+                searchQuery = String(searchQuery.dropFirst())
+            }
+            
+            // Try as username first (most common use case)
             do {
-                let user = try await UserService.shared.fetchUser(byId: userIdOrEmail)
+                if let user = try await UserService.shared.fetchUser(byUsername: searchQuery) {
+                    print("✅ Found user by username: \(user.displayName) (@\(user.username))")
+                    await createConversationAndNavigate(with: user)
+                    return
+                }
+            } catch {
+                print("⚠️ Error searching by username: \(error.localizedDescription)")
+            }
+            
+            // Try as user ID
+            do {
+                let user = try await UserService.shared.fetchUser(byId: searchQuery)
                 print("✅ Found user by ID: \(user.displayName)")
                 await createConversationAndNavigate(with: user)
                 return
@@ -128,7 +155,7 @@ struct NewChatView: View {
             
             // Try as email
             do {
-                if let user = try await UserService.shared.fetchUser(byEmail: userIdOrEmail) {
+                if let user = try await UserService.shared.fetchUser(byEmail: searchQuery) {
                     print("✅ Found user by email: \(user.displayName)")
                     await createConversationAndNavigate(with: user)
                     return
@@ -137,8 +164,8 @@ struct NewChatView: View {
                 print("⚠️ Error searching by email: \(error.localizedDescription)")
             }
             
-            print("❌ User not found for input: \(userIdOrEmail)")
-            errorMessage = "User not found"
+            print("❌ User not found for input: \(searchQuery)")
+            errorMessage = "User not found. Try searching by username (e.g., @username)"
             isLoading = false
         }
     }

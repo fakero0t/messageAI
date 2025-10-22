@@ -19,6 +19,7 @@ class PresenceService: ObservableObject {
     private init() {}
     
     func startTracking(for userId: String) {
+        print("🟢 [PresenceService] Starting presence tracking for user: \(userId)")
         currentUserId = userId
         setUserOnline(userId: userId)
         setupLifecycleObservers(userId: userId)
@@ -26,6 +27,7 @@ class PresenceService: ObservableObject {
     
     func stopTracking() {
         guard let userId = currentUserId else { return }
+        print("🔴 [PresenceService] Stopping presence tracking for user: \(userId)")
         setUserOffline(userId: userId)
         cancellables.removeAll()
         currentUserId = nil
@@ -37,7 +39,9 @@ class PresenceService: ObservableObject {
             "lastSeen": FieldValue.serverTimestamp()
         ], merge: true) { error in
             if let error = error {
-                print("Error setting user online: \(error)")
+                print("❌ [PresenceService] Error setting user online: \(error)")
+            } else {
+                print("✅ [PresenceService] User \(userId) set to online")
             }
         }
     }
@@ -48,7 +52,9 @@ class PresenceService: ObservableObject {
             "lastSeen": FieldValue.serverTimestamp()
         ], merge: true) { error in
             if let error = error {
-                print("Error setting user offline: \(error)")
+                print("❌ [PresenceService] Error setting user offline: \(error)")
+            } else {
+                print("✅ [PresenceService] User \(userId) set to offline")
             }
         }
     }

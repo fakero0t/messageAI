@@ -116,17 +116,16 @@ struct ProfileView: View {
                         }
                         
                         HStack {
-                            Text("Status")
+                            Text("Username")
                             Spacer()
-                            OnlineStatusView(isOnline: user.online, lastSeen: user.lastSeen)
+                            Text("@\(user.username)")
+                                .foregroundColor(.secondary)
                         }
                         
                         HStack {
-                            Text("User ID")
+                            Text("Status")
                             Spacer()
-                            Text(user.id)
-                                .font(.caption)
-                                .foregroundColor(.secondary)
+                            OnlineStatusView(isOnline: user.online, lastSeen: user.lastSeen)
                         }
                     }
                 }

@@ -10,6 +10,7 @@ import Foundation
 struct User: Codable, Identifiable, Hashable {
     let id: String
     let email: String
+    let username: String // Unique username for user lookup
     let displayName: String
     var online: Bool = false
     var lastSeen: Date?

@@ -71,6 +71,7 @@ class AuthenticationService: ObservableObject {
         let user = User(
             id: userId,
             email: firebaseUser.email ?? "unknown@email.com",
+            username: "user_\(userId.prefix(8))", // Fallback username
             displayName: firebaseUser.email?.components(separatedBy: "@").first ?? "User",
             online: true,
             lastSeen: nil
@@ -92,9 +93,19 @@ class AuthenticationService: ObservableObject {
         }
     }
     
-    func signUp(email: String, password: String, displayName: String) async throws {
+    func signUp(email: String, password: String, username: String, displayName: String) async throws {
+        // Normalize username to lowercase for consistency
+        let normalizedUsername = username.lowercased()
+        
+        // Check if username is available before creating account
+        let isAvailable = try await UserService.shared.isUsernameAvailable(normalizedUsername)
+        
+        if !isAvailable {
+            throw AuthError.usernameTaken
+        }
+        
         let result = try await auth.createUser(withEmail: email, password: password)
-        try await createUserDocument(userId: result.user.uid, email: email, displayName: displayName)
+        try await createUserDocument(userId: result.user.uid, email: email, username: normalizedUsername, displayName: displayName)
     }
     
     func signIn(email: String, password: String) async throws {
@@ -106,10 +117,28 @@ class AuthenticationService: ObservableObject {
         try auth.signOut()
     }
     
-    private func createUserDocument(userId: String, email: String, displayName: String) async throws {
-        let user = User(id: userId, email: email, displayName: displayName, online: false)
+    private func createUserDocument(userId: String, email: String, username: String, displayName: String) async throws {
+        // Create user as online since they're actively signing up
+        let user = User(id: userId, email: email, username: username, displayName: displayName, online: true, lastSeen: Date())
         let data = try Firestore.Encoder().encode(user)
         try await db.collection("users").document(userId).setData(data)
+        print("✅ Created user document with online status: true")
+    }
+}
+
+// MARK: - Auth Errors
+
+enum AuthError: LocalizedError {
+    case usernameTaken
+    case invalidUsername
+    
+    var errorDescription: String? {
+        switch self {
+        case .usernameTaken:
+            return "This username is already taken. Please choose another."
+        case .invalidUsername:
+            return "Username must be 3-20 characters (letters, numbers, and underscores only)"
+        }
     }
 }
 

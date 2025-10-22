@@ -59,6 +59,49 @@ class UserService {
         return user
     }
     
+    func fetchUser(byUsername username: String) async throws -> User? {
+        print("🔍 Searching for user with username: \(username)")
+        let snapshot = try await db.collection("users")
+            .whereField("username", isEqualTo: username.lowercased())
+            .getDocuments()
+        
+        print("📊 Found \(snapshot.documents.count) documents")
+        
+        guard let document = snapshot.documents.first else {
+            print("❌ No documents found for username")
+            return nil
+        }
+        
+        print("📦 First document data: \(document.data())")
+        
+        guard let user = try? Firestore.Decoder().decode(User.self, from: document.data()) else {
+            print("❌ Failed to decode user")
+            return nil
+        }
+        
+        print("✅ Successfully decoded user: \(user.displayName) (@\(user.username))")
+        return user
+    }
+    
+    /// Check if username is available
+    /// - Parameter username: Username to check (case-insensitive)
+    /// - Returns: True if available, false if taken
+    func isUsernameAvailable(_ username: String) async throws -> Bool {
+        let normalizedUsername = username.lowercased()
+        
+        print("🔍 Checking availability for username: \(normalizedUsername)")
+        
+        let snapshot = try await db.collection("users")
+            .whereField("username", isEqualTo: normalizedUsername)
+            .limit(to: 1)
+            .getDocuments()
+        
+        let isAvailable = snapshot.documents.isEmpty
+        print(isAvailable ? "✅ Username is available" : "❌ Username is taken")
+        
+        return isAvailable
+    }
+    
     func observeUserStatus(userId: String) -> AnyPublisher<User?, Never> {
         let subject = PassthroughSubject<User?, Never>()
         

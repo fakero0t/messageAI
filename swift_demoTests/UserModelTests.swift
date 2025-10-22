@@ -15,6 +15,7 @@ final class UserModelTests: XCTestCase {
         let user = User(
             id: "user123",
             email: "test@example.com",
+            username: "testuser",
             displayName: "Test User",
             online: true,
             lastSeen: Date()
@@ -22,6 +23,7 @@ final class UserModelTests: XCTestCase {
         
         XCTAssertEqual(user.id, "user123")
         XCTAssertEqual(user.email, "test@example.com")
+        XCTAssertEqual(user.username, "testuser")
         XCTAssertEqual(user.displayName, "Test User")
         XCTAssertTrue(user.online)
         XCTAssertNotNil(user.lastSeen)
@@ -32,12 +34,14 @@ final class UserModelTests: XCTestCase {
         let user = User(
             id: "user456",
             email: "test2@example.com",
+            username: "testuser2",
             displayName: "Test User 2",
             online: false,
             lastSeen: nil
         )
         
         XCTAssertEqual(user.id, "user456")
+        XCTAssertEqual(user.username, "testuser2")
         XCTAssertFalse(user.online)
         XCTAssertNil(user.lastSeen)
     }
@@ -69,6 +73,7 @@ final class UserModelTests: XCTestCase {
         let offlineUser = User(
             id: "offline",
             email: "offline@example.com",
+            username: "offlineuser",
             displayName: "Offline User",
             online: false,
             lastSeen: Date()

@@ -27,6 +27,34 @@ struct SignupView: View {
                 
                 // Form Fields
                 VStack(spacing: 15) {
+                    // Username field with availability check
+                    VStack(alignment: .leading, spacing: 5) {
+                        HStack {
+                            TextField("Username", text: $viewModel.username)
+                                .textFieldStyle(.roundedBorder)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                                .onChange(of: viewModel.username) { oldValue, newValue in
+                                    // Auto-check username availability after typing stops
+                                    Task {
+                                        try? await Task.sleep(nanoseconds: 500_000_000) // 0.5s delay
+                                        if viewModel.username == newValue && !newValue.isEmpty {
+                                            await viewModel.checkUsernameAvailability()
+                                        }
+                                    }
+                                }
+                            
+                            if viewModel.isCheckingUsername {
+                                ProgressView()
+                                    .scaleEffect(0.8)
+                            }
+                        }
+                        
+                        Text("3-20 characters: letters, numbers, and underscores only")
+                            .font(.caption2)
+                            .foregroundColor(.gray)
+                    }
+                    
                     TextField("Display Name", text: $viewModel.displayName)
                         .textFieldStyle(.roundedBorder)
                         .autocorrectionDisabled()

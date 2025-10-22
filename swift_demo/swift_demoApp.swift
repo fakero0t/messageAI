@@ -8,11 +8,24 @@
 import SwiftUI
 import SwiftData
 import FirebaseCore
+import FirebaseAppCheck
 
 class AppDelegate: NSObject, UIApplicationDelegate {
   func application(_ application: UIApplication,
                    didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
     print("🎉🎉🎉 APP IS LAUNCHING WITH NEW CODE! 🎉🎉🎉")
+    
+    // Configure App Check for debug mode in simulator
+    #if targetEnvironment(simulator)
+    let providerFactory = AppCheckDebugProviderFactory()
+    AppCheck.setAppCheckProviderFactory(providerFactory)
+    print("📱 Using App Check Debug Provider for Simulator")
+    #else
+    // Use DeviceCheck for physical devices
+    let providerFactory = AppCheckDebugProviderFactory() // Can switch to DeviceCheckProviderFactory in production
+    AppCheck.setAppCheckProviderFactory(providerFactory)
+    #endif
+    
     FirebaseApp.configure()
     print("✅ Firebase configured successfully")
     return true

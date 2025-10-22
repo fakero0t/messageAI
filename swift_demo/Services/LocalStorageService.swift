@@ -116,6 +116,18 @@ class LocalStorageService {
         return try modelContext.fetch(descriptor)
     }
     
+    func fetchConversationsForUser(userId: String) throws -> [ConversationEntity] {
+        let descriptor = FetchDescriptor<ConversationEntity>(
+            sortBy: [SortDescriptor(\.lastMessageTime, order: .reverse)]
+        )
+        let allConversations = try modelContext.fetch(descriptor)
+        
+        // Filter to only include conversations where the user is a participant
+        return allConversations.filter { conversation in
+            conversation.participantIds.contains(userId)
+        }
+    }
+    
     func updateConversation(conversationId: String, lastMessage: String, timestamp: Date) throws {
         let predicate = #Predicate<ConversationEntity> { $0.id == conversationId }
         let descriptor = FetchDescriptor<ConversationEntity>(predicate: predicate)
@@ -200,6 +212,41 @@ class LocalStorageService {
             conversation.unreadCount += 1
             try modelContext.save()
         }
+    }
+    
+    // MARK: - Data Cleanup
+    
+    /// Clear all local data (messages, conversations, queued messages)
+    /// Should be called on user logout to prevent data leakage between users
+    func clearAllData() throws {
+        print("🗑️ [LocalStorage] Clearing all local data...")
+        
+        // Delete all messages
+        let messageDescriptor = FetchDescriptor<MessageEntity>()
+        let allMessages = try modelContext.fetch(messageDescriptor)
+        for message in allMessages {
+            modelContext.delete(message)
+        }
+        print("   Deleted \(allMessages.count) messages")
+        
+        // Delete all conversations
+        let conversationDescriptor = FetchDescriptor<ConversationEntity>()
+        let allConversations = try modelContext.fetch(conversationDescriptor)
+        for conversation in allConversations {
+            modelContext.delete(conversation)
+        }
+        print("   Deleted \(allConversations.count) conversations")
+        
+        // Delete all queued messages
+        let queuedDescriptor = FetchDescriptor<QueuedMessageEntity>()
+        let allQueued = try modelContext.fetch(queuedDescriptor)
+        for queued in allQueued {
+            modelContext.delete(queued)
+        }
+        print("   Deleted \(allQueued.count) queued messages")
+        
+        try modelContext.save()
+        print("✅ [LocalStorage] All local data cleared successfully")
     }
 }
 

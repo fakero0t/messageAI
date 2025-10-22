@@ -171,7 +171,7 @@ class TypingService: ObservableObject {
                 
                 // Only show typing if updated within last 3 seconds (prevents stuck indicators)
                 if timeDiff < 3.0 {
-                    let user = User(id: childSnapshot.key, email: "", displayName: displayName, online: true)
+                    let user = User(id: childSnapshot.key, email: "", username: "unknown", displayName: displayName, online: true)
                     users.append(user)
                     print("✅ [Observer] Added user: \(displayName)")
                 } else {

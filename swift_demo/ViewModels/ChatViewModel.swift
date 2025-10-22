@@ -92,8 +92,10 @@ class ChatViewModel: ObservableObject {
                         print("  Total participants: \(participants.count)")
                     } else {
                         // Only observe recipient status for one-on-one chats
-                        await MainActor.run {
-                            observeRecipientStatus()
+                        if !recipientId.isEmpty {
+                            await MainActor.run {
+                                observeRecipientStatus()
+                            }
                         }
                     }
                 } else {
@@ -509,6 +511,11 @@ class ChatViewModel: ObservableObject {
     }
     
     private func observeRecipientStatus() {
+        guard !recipientId.isEmpty else {
+            print("⚠️ [ChatViewModel] Cannot observe recipient status: recipientId is empty")
+            return
+        }
+        
         UserService.shared.observeUserStatus(userId: recipientId)
             .receive(on: DispatchQueue.main)
             .sink { [weak self] user in

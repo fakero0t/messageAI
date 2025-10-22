@@ -89,10 +89,11 @@ class MockLocalStorageService {
 
 // Mock User for testing
 extension User {
-    static func mockUser(id: String = "user123", email: String = "test@example.com") -> User {
+    static func mockUser(id: String = "user123", email: String = "test@example.com", username: String = "testuser") -> User {
         return User(
             id: id,
             email: email,
+            username: username,
             displayName: "Test User",
             online: true,
             lastSeen: nil

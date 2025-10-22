@@ -44,13 +44,14 @@ class GroupService {
             "isGroup": true,
             "groupName": name ?? "",
             "createdBy": creatorId,
-            "createdAt": FieldValue.serverTimestamp()
+            "createdAt": FieldValue.serverTimestamp(),
+            "lastMessageTime": FieldValue.serverTimestamp()
         ]
         
         try await db.collection("conversations").document(groupId).setData(groupData)
         print("✅ Group created in Firestore")
         
-        // Create in local storage
+        // Create in local storage immediately so it appears in conversation list
         try await MainActor.run {
             let conversation = ConversationEntity(
                 id: groupId,
@@ -59,6 +60,7 @@ class GroupService {
                 groupName: name,
                 createdBy: creatorId
             )
+            conversation.lastMessageTime = Date()
             try localStorage.saveConversation(conversation)
             print("✅ Group saved to local storage")
         }

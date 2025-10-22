@@ -85,16 +85,22 @@ class ConversationListViewModel: ObservableObject {
         
         Task {
             do {
-                // Load from local storage
-                var localConversations = try localStorage.fetchAllConversations()
+                guard let currentUserId = AuthenticationService.shared.currentUser?.id else {
+                    print("⚠️ [ConversationListViewModel] No current user ID - cannot load conversations")
+                    isLoading = false
+                    return
+                }
                 
-                print("📂 [ConversationListViewModel] Loaded \(localConversations.count) conversations from local storage")
+                // Load from local storage - ONLY conversations where current user is a participant
+                var localConversations = try localStorage.fetchConversationsForUser(userId: currentUserId)
+                
+                print("📂 [ConversationListViewModel] Loaded \(localConversations.count) conversations from local storage for user \(currentUserId)")
                 
                 // If local storage is empty (fresh install), fetch from Firestore
                 if localConversations.isEmpty {
                     print("🌐 [ConversationListViewModel] Local storage empty - fetching from Firestore...")
                     await fetchConversationsFromFirestore()
-                    localConversations = try localStorage.fetchAllConversations()
+                    localConversations = try localStorage.fetchConversationsForUser(userId: currentUserId)
                     print("📂 [ConversationListViewModel] Loaded \(localConversations.count) conversations after Firestore sync")
                 }
                 
@@ -189,6 +195,7 @@ class ConversationListViewModel: ObservableObject {
                 let placeholderUser = User(
                     id: participantId,
                     email: "unknown@example.com",
+                    username: "unknown",
                     displayName: "Unknown User"
                 )
                 participantUsers.append(placeholderUser)
