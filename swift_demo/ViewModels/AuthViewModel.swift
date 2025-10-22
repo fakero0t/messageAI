@@ -19,6 +19,7 @@ class AuthViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var isAuthenticated = false
     @Published var isCheckingUsername = false
+    @Published var isInitializing = true // Track initial auth check
     
     private let authService = AuthenticationService.shared
     private var cancellables = Set<AnyCancellable>()
@@ -27,6 +28,15 @@ class AuthViewModel: ObservableObject {
         authService.$currentUser
             .map { $0 != nil }
             .assign(to: &$isAuthenticated)
+        
+        // Mark initialization complete after first auth state check
+        // Use a small delay to give Firebase Auth time to check for existing session
+        Task {
+            try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
+            await MainActor.run {
+                self.isInitializing = false
+            }
+        }
         
         // Reset loading state when auth succeeds
         $isAuthenticated

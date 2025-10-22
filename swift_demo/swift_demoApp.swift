@@ -46,7 +46,10 @@ struct swift_demoApp: App {
 
     var body: some Scene {
         WindowGroup {
-            if authViewModel.isAuthenticated {
+            if authViewModel.isInitializing {
+                // Show loading screen while checking authentication
+                LoadingView()
+            } else if authViewModel.isAuthenticated {
                 MainView()
                     .environmentObject(authViewModel)
                     .environmentObject(notificationService)
@@ -78,5 +81,30 @@ struct swift_demoApp: App {
         await MessageQueueService.shared.processQueue()
         
         print("✅ App launch tasks complete")
+    }
+}
+
+// MARK: - Loading View
+
+struct LoadingView: View {
+    var body: some View {
+        ZStack {
+            Color(.systemBackground)
+                .ignoresSafeArea()
+            
+            VStack(spacing: 20) {
+                Image(systemName: "message.fill")
+                    .font(.system(size: 80))
+                    .foregroundColor(.blue)
+                
+                ProgressView()
+                    .scaleEffect(1.5)
+                    .tint(.blue)
+                
+                Text("Loading...")
+                    .font(.headline)
+                    .foregroundColor(.secondary)
+            }
+        }
     }
 }

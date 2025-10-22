@@ -114,6 +114,8 @@ struct NewChatView: View {
                         username: "group",
                         displayName: groupName
                     ))
+                    // Dismiss NewChatView so user goes directly to the group chat
+                    dismiss()
                 }
             }
         }

@@ -78,12 +78,38 @@ class ConversationListViewModel: ObservableObject {
     private let notificationService = NotificationService.shared
     
     private var cancellables = Set<AnyCancellable>()
+    private var authCancellable: AnyCancellable?
+    private var listeningUserId: String?
     
     init() {
-        loadConversations()
-        startListening()
+        observeAuthAndBootstrap()
     }
     
+    private func observeAuthAndBootstrap() {
+        // If already authenticated, bootstrap immediately
+        if let id = AuthenticationService.shared.currentUser?.id, !id.isEmpty {
+            loadConversations()
+            startListening(for: id)
+        }
+        
+        // Re-bootstrap when the authenticated user changes
+        authCancellable = AuthenticationService.shared.$currentUser
+            .compactMap { $0?.id }
+            .removeDuplicates()
+            .sink { [weak self] userId in
+                guard let self = self else { return }
+                self.loadConversations()
+                self.startListening(for: userId)
+            }
+    }
+
+    deinit {
+        if let id = listeningUserId {
+            conversationService.stopListeningToConversations(userId: id)
+        }
+        authCancellable?.cancel()
+    }
+
     func loadConversations() {
         isLoading = true
         
@@ -224,13 +250,17 @@ class ConversationListViewModel: ObservableObject {
         )
     }
     
-    private func startListening() {
-        // Listen to all conversations for current user
-        let currentUserId = AuthenticationService.shared.currentUser?.id ?? ""
+    private func startListening(for userId: String) {
+        guard !userId.isEmpty else { return }
         
-        print("🎧 [ConversationListViewModel] Starting conversation listener for user: \(currentUserId)")
+        // If we were listening for a different user, stop it first
+        if let prev = listeningUserId, prev != userId {
+            conversationService.stopListeningToConversations(userId: prev)
+        }
+        listeningUserId = userId
         
-        conversationService.listenToUserConversations(userId: currentUserId) { [weak self] snapshot in
+        print("🎧 [ConversationListViewModel] Starting conversation listener for user: \(userId)")
+        conversationService.listenToUserConversations(userId: userId) { [weak self] snapshot in
             print("📬 [ConversationListViewModel] Conversation update received: \(snapshot.id)")
             print("   Last message: \(snapshot.lastMessageText ?? "none")")
             Task {

@@ -135,6 +135,11 @@ class ConversationService {
         userId: String,
         onUpdate: @escaping (ConversationSnapshot) -> Void
     ) {
+        guard !userId.isEmpty else {
+            print("⚠️ listenToUserConversations called with empty userId; skipping listener")
+            return
+        }
+        
         print("🎧 Starting conversation listener for user: \(userId)")
         
         let listener = db.collection("conversations")
