@@ -17,7 +17,8 @@ class PersistenceController {
         let schema = Schema([
             MessageEntity.self,
             ConversationEntity.self,
-            QueuedMessageEntity.self
+            QueuedMessageEntity.self,
+            TranslationCacheEntity.self
         ])
         
         let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)

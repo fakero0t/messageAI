@@ -18,6 +18,10 @@
 	<string>1.0</string>
 	<key>CFBundleVersion</key>
 	<string>1</string>
+	<key>AITranslationEnabled</key>
+	<true/>
+	<key>TRANSLATE_FUNCTION_URL</key>
+	<string>https://us-central1-messageai-cbd8a.cloudfunctions.net/translateMessage</string>
 </dict>
 </plist>
 

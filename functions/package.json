@@ -1,0 +1,14 @@
+{
+  "name": "swift-demo-functions",
+  "type": "commonjs",
+  "engines": {
+    "node": "18"
+  },
+  "main": "index.js",
+  "dependencies": {
+    "firebase-admin": "^12.6.0",
+    "firebase-functions": "^4.6.0"
+  }
+}
+
+

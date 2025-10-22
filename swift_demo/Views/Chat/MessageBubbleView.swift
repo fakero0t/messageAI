@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import UIKit
 
 struct MessageBubbleView: View {
     let message: MessageEntity
@@ -15,6 +16,10 @@ struct MessageBubbleView: View {
     let onDelete: () -> Void
     
     @State private var showFullScreenImage = false // PR-10
+    @State private var isExpanded = false
+    @State private var isLoading = false
+    @State private var translatedEN: String = ""
+    @State private var translatedKA: String = ""
     
     var body: some View {
         HStack {
@@ -42,11 +47,45 @@ struct MessageBubbleView: View {
                         }
                     )
                 } else if let text = message.text {
-                    Text(text)
-                        .padding(12)
-                        .background(bubbleColor)
-                        .foregroundColor(textColor)
-                        .cornerRadius(16)
+                    ZStack {
+                        if isLoading {
+                            ProgressView()
+                                .padding(12)
+                                .background(bubbleColor)
+                                .foregroundColor(textColor)
+                                .cornerRadius(16)
+                        } else if isExpanded {
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack(alignment: .top, spacing: 6) {
+                                    Text("🇺🇸")
+                                    Text(translatedEN.isEmpty ? text : translatedEN)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                                Divider()
+                                HStack(alignment: .top, spacing: 6) {
+                                    Text("🇬🇪")
+                                    Text(translatedKA.isEmpty ? text : translatedKA)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                            }
+                            .padding(12)
+                            .background(bubbleColor)
+                            .foregroundColor(textColor)
+                            .cornerRadius(16)
+                        } else {
+                            Text(text)
+                                .padding(12)
+                                .background(bubbleColor)
+                                .foregroundColor(textColor)
+                                .cornerRadius(16)
+                        }
+                    }
+                    .onTapGesture(count: 2) {
+                        handleDoubleTap()
+                    }
+                    .contextMenu {
+                        Button("Show Translation") { handleDoubleTap() }
+                    }
                 }
                 
                 HStack(spacing: 4) {
@@ -125,6 +164,54 @@ struct MessageBubbleView: View {
             Image(systemName: "exclamationmark.circle.fill")
                 .font(.caption2)
                 .foregroundColor(.red)
+        }
+    }
+
+    private func handleDoubleTap() {
+        print("👆 [MessageBubble] Double-tap on message: \(message.id)")
+        print("🔧 [MessageBubble] aiTranslationEnabled=true (forced)")
+        guard let text = message.text else {
+            print("⚠️ [MessageBubble] Guard failed: no text")
+            return
+        }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        
+        // If we already have both translations, just toggle
+        if !translatedEN.isEmpty && !translatedKA.isEmpty {
+            withAnimation(.spring(response: 0.3)) { isExpanded.toggle() }
+            return
+        }
+        
+        // Try local cache first
+        if let cached = TranslationCacheService.shared.get(text: text) {
+            print("💾 [MessageBubble] Cache hit for text hash")
+            translatedEN = cached.translations.en
+            translatedKA = cached.translations.ka
+            withAnimation(.spring(response: 0.3)) {
+                isExpanded = true
+            }
+            return
+        }
+        
+        print("🌐 [MessageBubble] Cache miss → requesting SSE translation")
+        isLoading = true
+        let tsMs = Int64(Date().timeIntervalSince1970 * 1000)
+        TranslationTransport.shared.requestTranslation(
+            messageId: message.id,
+            text: text,
+            conversationId: message.conversationId,
+            timestampMs: tsMs
+        ) { result in
+            print("📨 [MessageBubble] SSE completion for message \(message.id) result=\(result != nil)")
+            DispatchQueue.main.async {
+                self.isLoading = false
+                guard let result = result else { return }
+                self.translatedEN = result.translations.en
+                self.translatedKA = result.translations.ka
+                withAnimation(.spring(response: 0.3)) {
+                    self.isExpanded = true
+                }
+            }
         }
     }
 }

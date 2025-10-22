@@ -242,6 +242,18 @@ class ChatViewModel: ObservableObject {
                     recipientId: recipientId
                 )
                 
+                // Eager translation request (non-blocking)
+                let tsMs = Int64(Date().timeIntervalSince1970 * 1000)
+                TranslationTransport.shared.requestTranslation(
+                    messageId: messageId,
+                    text: text,
+                    conversationId: conversationId,
+                    timestampMs: tsMs
+                ) { result in
+                    // For PR04 we do not update UI; caching happens server-side/on-demand later
+                    _ = result
+                }
+                
                 print("✅ Message sent successfully")
                 
             } catch {
