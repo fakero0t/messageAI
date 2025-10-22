@@ -33,6 +33,25 @@ struct ChatView: View {
                 .animation(.easeInOut, value: NetworkMonitor.shared.connectionQuality)
                 .animation(.easeInOut, value: MessageQueueService.shared.queueCount)
             
+            // Show error if user is no longer a member
+            if viewModel.isGroup && !viewModel.isStillMember {
+                VStack(spacing: 16) {
+                    Image(systemName: "exclamationmark.triangle")
+                        .font(.system(size: 50))
+                        .foregroundColor(.orange)
+                    
+                    Text("You are no longer a member of this group")
+                        .font(.headline)
+                        .multilineTextAlignment(.center)
+                    
+                    Text("You cannot view messages or send new messages.")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding()
+            } else {
                 MessageListView(
                     messages: viewModel.messages,
                     currentUserId: viewModel.currentUserId,
@@ -46,21 +65,22 @@ struct ChatView: View {
                         viewModel.deleteMessage(messageId: messageId)
                     }
                 )
-            .contentShape(Rectangle())
-            .onTapGesture {
-                isInputFocused = false
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    isInputFocused = false
+                }
+                
+                Divider()
+                
+                // In Vue: <MessageInput v-model:text="messageText" v-model:focused="isInputFocused" @send="sendMessage" @sendImage="sendImage" @textChange="viewModel.handleTextFieldChange" />
+                MessageInputView(
+                    text: $messageText,
+                    onSend: sendMessage,
+                    onSendImage: sendImage, // PR-9
+                    onTextChange: viewModel.handleTextFieldChange, // PR-3
+                    isFocused: $isInputFocused
+                )
             }
-            
-            Divider()
-            
-            // In Vue: <MessageInput v-model:text="messageText" v-model:focused="isInputFocused" @send="sendMessage" @sendImage="sendImage" @textChange="viewModel.handleTextFieldChange" />
-            MessageInputView(
-                text: $messageText,
-                onSend: sendMessage,
-                onSendImage: sendImage, // PR-9
-                onTextChange: viewModel.handleTextFieldChange, // PR-3
-                isFocused: $isInputFocused
-            )
         }
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
@@ -70,7 +90,8 @@ struct ChatView: View {
                 // In Vue: <ChatHeader :recipientName="recipientName" :typing="viewModel.typingText" />
                 ChatHeaderView(
                     viewModel: viewModel,
-                    recipientName: recipientName
+                    recipientName: recipientName,
+                    showGroupInfo: $showGroupInfo
                 )
             }
         }
@@ -131,6 +152,7 @@ struct ChatView: View {
 struct ChatHeaderView: View {
     @ObservedObject var viewModel: ChatViewModel
     let recipientName: String
+    @Binding var showGroupInfo: Bool
     
     @State private var recipientUser: User?
     
@@ -142,7 +164,7 @@ struct ChatHeaderView: View {
     var body: some View {
         HStack(spacing: 8) {
             if viewModel.isGroup {
-                // PR-16: Group - Show name and typing indicator
+                // PR-16: Group - Show name and typing indicator (tappable to show group info)
                 VStack(alignment: .center, spacing: 2) {
                     Text(viewModel.groupName ?? "Group Chat")
                         .font(.headline)
@@ -161,6 +183,10 @@ struct ChatHeaderView: View {
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }
+                }
+                .contentShape(Rectangle()) // Make entire area tappable
+                .onTapGesture {
+                    showGroupInfo = true
                 }
             } else {
                 // PR-16: 1-on-1 - Show avatar + name + status

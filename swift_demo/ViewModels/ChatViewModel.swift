@@ -21,6 +21,7 @@ class ChatViewModel: ObservableObject {
     @Published var isGroup = false
     @Published var groupName: String?
     @Published var participants: [User] = []
+    @Published var isStillMember = true // Track if current user is still in the group
     
     // Typing indicator (PR-3)
     @Published var typingText: String?
@@ -44,6 +45,9 @@ class ChatViewModel: ObservableObject {
     private let imageUploadService = ImageUploadService.shared // PR-9
     private var typingDebounceTimer: Timer? // PR-3
     private var cancellables = Set<AnyCancellable>()
+    
+    // Track when chat was opened to filter out old messages from triggering notifications
+    private let chatOpenedAt = Date()
     
     init(recipientId: String, conversationId: String? = nil) {
         print("🚀 [ChatViewModel] Initializing with recipientId: \(recipientId)")
@@ -81,6 +85,17 @@ class ChatViewModel: ObservableObject {
                     groupName = conversation.groupName
                     
                     if isGroup {
+                        // Verify current user is still a participant
+                        let isParticipant = conversation.participantIds.contains(currentUserId)
+                        await MainActor.run {
+                            isStillMember = isParticipant
+                        }
+                        
+                        if !isParticipant {
+                            print("⚠️ Current user is no longer a member of this group")
+                            return
+                        }
+                        
                         // Load all participant details for groups
                         print("👥 Loading group details for: \(conversationId)")
                         for participantId in conversation.participantIds {
@@ -109,6 +124,39 @@ class ChatViewModel: ObservableObject {
                 }
             } catch {
                 print("⚠️ Error loading conversation details: \(error)")
+            }
+        }
+        
+        // Monitor for real-time participant changes
+        if isGroup {
+            observeGroupMembership()
+        }
+    }
+    
+    /// Monitor if current user is removed from the group in real-time
+    private func observeGroupMembership() {
+        guard isGroup else { return }
+        
+        Task {
+            // Check periodically if we're still a member by watching the conversation
+            ConversationService.shared.listenToUserConversations(userId: currentUserId) { [weak self] snapshot in
+                guard let self = self else { return }
+                
+                // If this is our conversation, check if we're still in participants
+                if snapshot.id == self.conversationId {
+                    Task { @MainActor in
+                        let isParticipant = snapshot.participantIds.contains(self.currentUserId)
+                        self.isStillMember = isParticipant
+                        
+                        if !isParticipant {
+                            print("🚫 User was removed from group - stopping listeners")
+                            // Stop all listeners
+                            self.listenerService.stopListening(conversationId: self.conversationId)
+                            self.typingService.stopObservingTypingUsers(conversationId: self.conversationId)
+                            self.errorMessage = "You have been removed from this group"
+                        }
+                    }
+                }
             }
         }
     }
@@ -555,10 +603,23 @@ class ChatViewModel: ObservableObject {
                         self.objectWillChange.send() // Explicitly trigger update
                         self.loadLocalMessages()
                         
-                        // Trigger notification if message is from someone else
+                        // Only trigger notification for NEW messages that arrived AFTER chat was opened
+                        // This prevents notifications for existing messages when opening the chat
                         if snapshot.senderId != self.currentUserId {
-                            print("🔔 [ChatViewModel] Message is from someone else, triggering notification...")
-                            self.showNotificationForMessage(snapshot)
+                            let messageTimestamp = snapshot.timestamp
+                            let isNewMessage = messageTimestamp > self.chatOpenedAt
+                            
+                            print("🔔 [ChatViewModel] Message from someone else:")
+                            print("   Message timestamp: \(messageTimestamp)")
+                            print("   Chat opened at: \(self.chatOpenedAt)")
+                            print("   Is new message: \(isNewMessage)")
+                            
+                            if isNewMessage {
+                                print("✅ [ChatViewModel] NEW message - triggering notification")
+                                self.showNotificationForMessage(snapshot)
+                            } else {
+                                print("⏭️ [ChatViewModel] OLD message - skipping notification")
+                            }
                         } else {
                             print("ℹ️ [ChatViewModel] Message is from current user, skipping notification")
                         }
@@ -571,32 +632,44 @@ class ChatViewModel: ObservableObject {
     }
     
     private func showNotificationForMessage(_ snapshot: MessageSnapshot) {
-        // Get sender name
-        let senderName: String
-        if isGroup {
-            senderName = participants.first { $0.id == snapshot.senderId }?.displayName ?? "Unknown"
-        } else {
-            senderName = participants.first?.displayName ?? recipientId
-        }
-        
-        // Show system notification (will be suppressed if user is viewing this conversation)
-        notificationService.showMessageNotification(
-            conversationId: conversationId,
-            senderName: senderName,
-            messageText: snapshot.text ?? "Image",
-            isGroup: isGroup
-        )
-        
-        // ✨ NEW: Show in-app notification (always, even if in conversation)
-        Task { @MainActor in
-            let inAppNotification = InAppNotification(
-                conversationId: conversationId,
-                senderName: senderName,
-                messageText: snapshot.text ?? "Image",
-                isGroup: isGroup
-            )
-            InAppNotificationManager.shared.show(inAppNotification)
-            print("🔔 [ChatViewModel] In-app notification triggered for: \(senderName)")
+        // Fetch sender name asynchronously
+        Task {
+            let senderName: String
+            
+            if isGroup {
+                // For groups, look up in participants array
+                senderName = participants.first { $0.id == snapshot.senderId }?.displayName ?? "Unknown"
+            } else {
+                // For one-on-one, fetch the sender's User object to get displayName/username
+                do {
+                    let sender = try await userService.fetchUser(byId: snapshot.senderId)
+                    senderName = sender.displayName
+                    print("   Sender name: \(senderName) (@\(sender.username))")
+                } catch {
+                    senderName = "Someone"
+                    print("   ⚠️ Could not fetch sender name: \(error)")
+                }
+            }
+            
+            await MainActor.run {
+                // Show system notification (will be suppressed if user is viewing this conversation)
+                notificationService.showMessageNotification(
+                    conversationId: conversationId,
+                    senderName: senderName,
+                    messageText: snapshot.text ?? "Image",
+                    isGroup: isGroup
+                )
+                
+                // ✨ NEW: Show in-app notification (always, even if in conversation)
+                let inAppNotification = InAppNotification(
+                    conversationId: conversationId,
+                    senderName: senderName,
+                    messageText: snapshot.text ?? "Image",
+                    isGroup: isGroup
+                )
+                InAppNotificationManager.shared.show(inAppNotification)
+                print("🔔 [ChatViewModel] In-app notification triggered for: \(senderName)")
+            }
         }
         
         // ✨ NEW: Increment unread count ONLY if user not viewing this conversation

@@ -244,6 +244,18 @@ class ConversationListViewModel: ObservableObject {
         print("   Last message: \(snapshot.lastMessageText ?? "none")")
         print("   Last message time: \(snapshot.lastMessageTime?.description ?? "none")")
         
+        // Check if current user is still a participant
+        let currentUserId = AuthenticationService.shared.currentUser?.id ?? ""
+        if !snapshot.participantIds.contains(currentUserId) {
+            print("🚫 [ConversationListViewModel] Current user removed from conversation \(snapshot.id) - deleting from local storage")
+            await MainActor.run {
+                try? localStorage.deleteConversation(byId: snapshot.id)
+            }
+            // Reload conversations to update UI
+            loadConversations()
+            return
+        }
+        
         do {
             // Sync to local storage
             try await conversationService.syncConversationFromFirestore(snapshot)

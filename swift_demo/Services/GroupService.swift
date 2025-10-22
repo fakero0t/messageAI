@@ -128,11 +128,21 @@ class GroupService {
             "participants": FieldValue.arrayRemove([userId])
         ])
         
-        // Update local storage
-        try await MainActor.run {
-            if let conversation = try? localStorage.fetchConversation(byId: groupId) {
-                conversation.participantIds.removeAll { $0 == userId }
-                // SwiftData auto-saves changes to tracked objects
+        // If the current user is being removed, delete the entire conversation from their local storage
+        // This prevents them from seeing the chat or receiving new messages
+        let currentUserId = AuthenticationService.shared.currentUser?.id ?? ""
+        if userId == currentUserId {
+            print("🗑️ Current user removed from group - deleting conversation from local storage")
+            try await MainActor.run {
+                try? localStorage.deleteConversation(byId: groupId)
+            }
+        } else {
+            // Update local storage for other users (just remove from participant list)
+            try await MainActor.run {
+                if let conversation = try? localStorage.fetchConversation(byId: groupId) {
+                    conversation.participantIds.removeAll { $0 == userId }
+                    // SwiftData auto-saves changes to tracked objects
+                }
             }
         }
         

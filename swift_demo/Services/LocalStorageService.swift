@@ -128,6 +128,17 @@ class LocalStorageService {
         }
     }
     
+    func deleteConversation(byId conversationId: String) throws {
+        let predicate = #Predicate<ConversationEntity> { $0.id == conversationId }
+        let descriptor = FetchDescriptor<ConversationEntity>(predicate: predicate)
+        
+        if let conversation = try modelContext.fetch(descriptor).first {
+            modelContext.delete(conversation)
+            try modelContext.save()
+            print("🗑️ Deleted conversation: \(conversationId)")
+        }
+    }
+    
     func updateConversation(conversationId: String, lastMessage: String, timestamp: Date) throws {
         let predicate = #Predicate<ConversationEntity> { $0.id == conversationId }
         let descriptor = FetchDescriptor<ConversationEntity>(predicate: predicate)
