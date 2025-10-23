@@ -5,6 +5,10 @@ const fetch = require('node-fetch');
 try { admin.initializeApp(); } catch (_) {}
 const db = admin.firestore();
 
+// AI V3: Import new functions
+const { getWordDefinition } = require('./definitionFunction');
+const { suggestEnglishToGeorgian } = require('./englishTranslationFunction');
+
 // OpenAI key helper
 function getOpenAIKey() {
   try {
@@ -560,4 +564,6 @@ exports.suggestRelatedWords = functions
     }
   });
 
-
+// AI V3: Export new functions
+exports.getWordDefinition = getWordDefinition;
+exports.suggestEnglishToGeorgian = suggestEnglishToGeorgian;

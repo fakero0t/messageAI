@@ -19,7 +19,9 @@ class PersistenceController {
             ConversationEntity.self,
             QueuedMessageEntity.self,
             TranslationCacheEntity.self,
-            WordUsageEntity.self
+            WordUsageEntity.self,
+            DefinitionCacheEntity.self,
+            EnglishUsageEntity.self
         ])
         
         let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)

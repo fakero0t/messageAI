@@ -7,7 +7,8 @@
 
 import SwiftUI
 
-/// Bar displaying Georgian word suggestions above the message composer
+/// Bar displaying Georgian word suggestions OR English→Georgian translation suggestions
+/// AI V3: Extended to support both suggestion types (never both simultaneously)
 /// Think of this as a Vue component managing async state: <SuggestionBar v-model:text="messageText" />
 struct GeoSuggestionBar: View {
     @Binding var messageText: String
@@ -17,6 +18,8 @@ struct GeoSuggestionBar: View {
     
     @StateObject private var suggestionService = GeoSuggestionService.shared
     @StateObject private var wordUsageService = WordUsageTrackingService.shared
+    @StateObject private var englishSuggestionService = EnglishTranslationSuggestionService.shared
+    @StateObject private var englishUsageService = EnglishUsageTrackingService.shared
     private let analytics = TranslationAnalytics.shared
     
     @State private var suggestions: [GeoSuggestion] = []
@@ -26,6 +29,11 @@ struct GeoSuggestionBar: View {
     @State private var hasError = false
     @State private var showUndo = false
     @State private var debounceTask: Task<Void, Never>?
+    
+    // AI V3: English suggestion state
+    @State private var englishSuggestions: [EnglishSuggestion] = []
+    @State private var baseEnglishWord: String?
+    @State private var suggestionType: SuggestionType = .georgian
     
     var body: some View {
         // PR-6: Respect global opt-out setting
@@ -81,8 +89,8 @@ struct GeoSuggestionBar: View {
             .padding(.vertical, 8)
             .transition(.move(edge: .top).combined(with: .opacity))
             
-        } else if !suggestions.isEmpty {
-            // Suggestions
+        } else if suggestionType == .georgian && !suggestions.isEmpty {
+            // Georgian suggestions
             VStack(alignment: .leading, spacing: 8) {
                 if let base = baseWord {
                     Text("You're able to use \(base) a lot. Now try using one of these in a sentence!")
@@ -101,6 +109,37 @@ struct GeoSuggestionBar: View {
                                 },
                                 onDismiss: {
                                     dismissSuggestions()
+                                }
+                            )
+                            .frame(width: 200)
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                }
+            }
+            .padding(.vertical, 8)
+            .transition(.move(edge: .top).combined(with: .opacity))
+            
+        } else if suggestionType == .english && !englishSuggestions.isEmpty {
+            // AI V3: English→Georgian translation suggestions
+            VStack(alignment: .leading, spacing: 8) {
+                if let base = baseEnglishWord {
+                    Text("You use '\(base)' often. Try using one of these Georgian translations!")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(.secondary)
+                        .padding(.horizontal, 16)
+                }
+                
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(englishSuggestions) { suggestion in
+                            EnglishSuggestionChip(
+                                suggestion: suggestion,
+                                onAccept: {
+                                    acceptEnglishSuggestion(suggestion)
+                                },
+                                onDismiss: {
+                                    dismissEnglishSuggestions()
                                 }
                             )
                             .frame(width: 200)
@@ -143,6 +182,7 @@ struct GeoSuggestionBar: View {
     }
     
     /// Check if we should show suggestions for the current text
+    /// AI V3: Priority - Check Georgian first, then English (never both)
     func checkForSuggestions() {
         // Cancel any existing debounce task
         debounceTask?.cancel()
@@ -154,45 +194,83 @@ struct GeoSuggestionBar: View {
             // Check if we were cancelled
             guard !Task.isCancelled else { return }
             
-            guard let triggerWord = suggestionService.shouldShowSuggestion(for: messageText) else {
-                suggestions = []
-                baseWord = nil
-                isLoading = false
+            // PRIORITY 1: Check Georgian suggestions first
+            if let triggerWord = suggestionService.shouldShowSuggestion(for: messageText) {
+                // Show loading state
+                isLoading = true
                 hasError = false
+                baseWord = triggerWord
+                suggestionType = .georgian
+                
+                // Fetch Georgian suggestions
+                if let response = await suggestionService.fetchSuggestions(for: triggerWord) {
+                    guard !Task.isCancelled else { return }
+                    
+                    isLoading = false
+                    suggestions = Array(response.suggestions.prefix(3)) // Max 3 chips
+                    suggestionSource = response.source
+                    
+                    // Log exposure event
+                    let baseWordHash = analytics.hashWord(triggerWord)
+                    analytics.logSuggestionExposed(
+                        baseWord: triggerWord,
+                        baseWordHash: baseWordHash,
+                        source: response.source,
+                        suggestionCount: suggestions.count
+                    )
+                    return // Exit early if Georgian suggestions found
+                }
+            }
+            
+            // PRIORITY 2: Check English suggestions (only if no Georgian)
+            guard let userId = AuthenticationService.shared.currentUser?.id else {
+                clearAllSuggestions()
                 return
             }
             
-            // Show loading state
-            isLoading = true
-            hasError = false
-            baseWord = triggerWord
-            
-            // Fetch suggestions
-            if let response = await suggestionService.fetchSuggestions(for: triggerWord) {
-                // Check again if we were cancelled while fetching
-                guard !Task.isCancelled else { return }
-                
-                isLoading = false
-                suggestions = Array(response.suggestions.prefix(3)) // Max 3 chips
-                suggestionSource = response.source
-                
-                // Log exposure event
-                let baseWordHash = analytics.hashWord(triggerWord)
-                analytics.logSuggestionExposed(
-                    baseWord: triggerWord,
-                    baseWordHash: baseWordHash,
-                    source: response.source,
-                    suggestionCount: suggestions.count
-                )
-            } else {
-                // No suggestions available - just hide quietly, don't show error
-                // Error should only show for actual fetch failures, not "no results"
-                isLoading = false
+            if let englishWord = englishSuggestionService.shouldShowEnglishSuggestion(for: messageText, userId: userId) {
+                // Show loading state
+                isLoading = true
                 hasError = false
-                suggestions = []
-                baseWord = nil
+                baseEnglishWord = englishWord
+                suggestionType = .english
+                
+                // Get user's conversation ID (assume first conversation for now)
+                let conversationId = messageText.isEmpty ? "" : "temp_conv_id"
+                
+                // Fetch English suggestions
+                if let response = await englishSuggestionService.fetchSuggestions(for: englishWord, conversationId: conversationId) {
+                    guard !Task.isCancelled else { return }
+                    
+                    isLoading = false
+                    englishSuggestions = Array(response.suggestions.prefix(3)) // Max 3 chips
+                    
+                    // Log exposure event
+                    let baseWordHash = analytics.hashWord(englishWord)
+                    let threshold = englishUsageService.calculateDynamicThreshold(userId: userId)
+                    analytics.logEnglishSuggestionExposed(
+                        englishWord: englishWord,
+                        wordHash: baseWordHash,
+                        suggestionCount: englishSuggestions.count,
+                        userVelocity: threshold
+                    )
+                    return
+                }
             }
+            
+            // No suggestions available
+            clearAllSuggestions()
         }
+    }
+    
+    /// Clear all suggestion states
+    private func clearAllSuggestions() {
+        suggestions = []
+        englishSuggestions = []
+        baseWord = nil
+        baseEnglishWord = nil
+        isLoading = false
+        hasError = false
     }
     
     /// Accept a suggestion (replace selected or append)
@@ -260,7 +338,7 @@ struct GeoSuggestionBar: View {
         }
     }
     
-    /// Dismiss suggestions
+    /// Dismiss Georgian suggestions
     private func dismissSuggestions() {
         // Log dismissal event
         if let base = baseWord, let source = suggestionSource {
@@ -278,6 +356,154 @@ struct GeoSuggestionBar: View {
             suggestionSource = nil
             hasError = false
         }
+    }
+    
+    // AI V3: Accept English suggestion with smart replace
+    private func acceptEnglishSuggestion(_ suggestion: EnglishSuggestion) {
+        let previousText = messageText
+        guard let englishWord = baseEnglishWord else { return }
+        
+        // Log click event
+        let englishHash = analytics.hashWord(englishWord)
+        let georgianHash = analytics.hashWord(suggestion.word)
+        analytics.logEnglishSuggestionClicked(
+            englishWord: englishWord,
+            wordHash: englishHash,
+            georgianWord: suggestion.word,
+            georgianHash: georgianHash,
+            formality: suggestion.formality
+        )
+        
+        // Smart replace: if English word in text, replace it; otherwise append
+        let newText: String
+        let action: String
+        
+        if messageText.lowercased().contains(englishWord.lowercased()) {
+            // Replace first occurrence of English word
+            if let range = messageText.range(of: englishWord, options: [.caseInsensitive]) {
+                newText = messageText.replacingCharacters(in: range, with: suggestion.word)
+                action = "replace"
+            } else {
+                // Fallback to append
+                newText = messageText.hasSuffix(" ") || messageText.isEmpty
+                    ? messageText + suggestion.word
+                    : messageText + " " + suggestion.word
+                action = "append"
+            }
+        } else {
+            // Append with smart punctuation
+            newText = messageText.hasSuffix(" ") || messageText.isEmpty
+                ? messageText + suggestion.word
+                : messageText + " " + suggestion.word
+            action = "append"
+        }
+        
+        messageText = newText
+        onTextChange(newText)
+        
+        // Log acceptance event
+        analytics.logEnglishSuggestionAccepted(
+            englishWord: englishWord,
+            wordHash: englishHash,
+            georgianWord: suggestion.word,
+            georgianHash: georgianHash,
+            action: action
+        )
+        
+        // Show undo with previous text
+        undoText = previousText
+        showUndo = true
+        
+        // Clear suggestions
+        englishSuggestions = []
+        baseEnglishWord = nil
+        
+        // Auto-hide undo after 5 seconds
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 5_000_000_000)
+            if showUndo {
+                showUndo = false
+                undoText = nil
+            }
+        }
+    }
+    
+    // AI V3: Dismiss English suggestions
+    private func dismissEnglishSuggestions() {
+        // Log dismissal event
+        if let englishWord = baseEnglishWord {
+            let wordHash = analytics.hashWord(englishWord)
+            analytics.logEnglishSuggestionDismissed(
+                englishWord: englishWord,
+                wordHash: wordHash
+            )
+        }
+        
+        withAnimation(.easeOut(duration: 0.2)) {
+            englishSuggestions = []
+            baseEnglishWord = nil
+            hasError = false
+        }
+    }
+}
+
+// AI V3: Suggestion type enum
+enum SuggestionType {
+    case georgian
+    case english
+}
+
+// AI V3: English suggestion chip component
+struct EnglishSuggestionChip: View {
+    let suggestion: EnglishSuggestion
+    let onAccept: () -> Void
+    let onDismiss: () -> Void
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(suggestion.word)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(.primary)
+                    
+                    Text(suggestion.gloss)
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary)
+                }
+                
+                Spacer()
+                
+                Button {
+                    onDismiss()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 18))
+                        .foregroundColor(.secondary)
+                }
+            }
+            
+            HStack {
+                Text(suggestion.contextHint)
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
+                    .italic()
+                
+                Spacer()
+                
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    onAccept()
+                } label: {
+                    Text("Use this")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(.blue)
+                }
+            }
+        }
+        .padding(12)
+        .background(Color(.systemGray6))
+        .cornerRadius(12)
     }
 }
 

@@ -44,6 +44,7 @@ class ChatViewModel: ObservableObject {
     private let typingService = TypingService.shared // PR-3
     private let imageUploadService = ImageUploadService.shared // PR-9
     private let wordUsageTrackingService = WordUsageTrackingService.shared // PR-1 (Geo Suggestions)
+    private let englishUsageTrackingService = EnglishUsageTrackingService.shared // AI V3 (English Suggestions)
     private var typingDebounceTimer: Timer? // PR-3
     private var cancellables = Set<AnyCancellable>()
     
@@ -199,6 +200,11 @@ class ChatViewModel: ObservableObject {
         // PR-1 (Geo Suggestions): Track Georgian word usage
         Task { @MainActor in
             wordUsageTrackingService.trackMessage(text)
+        }
+        
+        // AI V3: Track English word usage for translation suggestions
+        Task { @MainActor in
+            englishUsageTrackingService.trackMessage(text, userId: currentUserId)
         }
         
         let messageId = UUID().uuidString
@@ -702,6 +708,13 @@ class ChatViewModel: ObservableObject {
                         print("🔄 [ChatViewModel] Triggering UI update...")
                         self.objectWillChange.send() // Explicitly trigger update
                         self.loadLocalMessages()
+                        
+                        // AI V3: Track English words from received messages
+                        if let text = snapshot.text, !text.isEmpty {
+                            Task { @MainActor in
+                                self.englishUsageTrackingService.trackMessage(text, userId: self.currentUserId)
+                            }
+                        }
                         
                         // Only trigger notification for NEW messages that arrived AFTER chat was opened
                         // This prevents notifications for existing messages when opening the chat

@@ -22,7 +22,18 @@ struct MessageBubbleView: View {
     @State private var translatedKA: String = ""
     @State private var nlSheetText: String? = nil
     
+    // AI V3: Definition lookup
+    @State private var showDefinitionModal = false
+    @State private var definitionResult: DefinitionResult? = nil
+    @State private var definitionError: Error? = nil
+    @State private var isLoadingDefinition = false
+    @State private var highlightedWordRange: Range<String.Index>? = nil
+    
     var body: some View {
+        // Calculate available width for text wrapping
+        let maxBubbleWidth = UIScreen.main.bounds.width * 0.75
+        let contentWidth = maxBubbleWidth - 24  // Subtract horizontal padding (12 * 2)
+        
         HStack {
             if isFromCurrentUser {
                 Spacer()
@@ -54,41 +65,65 @@ struct MessageBubbleView: View {
                                 HStack(alignment: .top, spacing: 6) {
                                     Text("🇺🇸")
                                     Text(translatedEN.isEmpty ? text : translatedEN)
-                                        .fixedSize(horizontal: false, vertical: true)
                                 }
                                 Divider()
                                 HStack(alignment: .top, spacing: 6) {
                                     Text("🇬🇪")
-                                    Text(translatedKA.isEmpty ? text : translatedKA)
-                                        .fixedSize(horizontal: false, vertical: true)
+                                    // AI V3: Use TappableTextView for Georgian in expanded view
+                                    let georgianText = translatedKA.isEmpty ? text : translatedKA
+                                    if GeorgianScriptDetector.containsGeorgian(georgianText) {
+                                        LongPressableText(
+                                            text: georgianText,
+                                            font: .body,
+                                            color: textColor,
+                                            alignment: .leading,
+                                            maxWidth: contentWidth - 30
+                                        ) { word, fullContext in
+                                            handleLongPressWord(word: word, fullContext: fullContext)
+                                        }
+                                    } else {
+                                        Text(georgianText)
+                                    }
                                 }
                             }
                             .padding(12)
                             .background(bubbleColor)
                             .foregroundColor(textColor)
                             .cornerRadius(16)
+                            .frame(maxWidth: maxBubbleWidth, alignment: .leading)
                             .onTapGesture(count: 2) {
                                 handleDoubleTap()
                             }
                         } else {
-                            let bubble = Text(text)
+                            // AI V3: Use TappableTextView for Georgian text to detect exact word
+                            if GeorgianScriptDetector.containsGeorgian(text) {
+                                LongPressableText(
+                                    text: text,
+                                    font: .body,
+                                    color: textColor,
+                                    alignment: isFromCurrentUser ? .trailing : .leading,
+                                    maxWidth: contentWidth
+                                ) { word, fullContext in
+                                    handleLongPressWord(word: word, fullContext: fullContext)
+                                }
                                 .padding(12)
                                 .background(bubbleColor)
-                                .foregroundColor(textColor)
                                 .cornerRadius(16)
+                                .frame(maxWidth: maxBubbleWidth, alignment: isFromCurrentUser ? .trailing : .leading)
                                 .onTapGesture(count: 2) {
                                     handleDoubleTap()
                                 }
-
-                            if GeorgianScriptDetector.containsGeorgian(text) {
-                                GeorgianMagnifierOverlay(
-                                    text: text,
-                                    alignment: isFromCurrentUser ? .topTrailing : .topLeading
-                                ) {
-                                    bubble
-                                }
                             } else {
-                                bubble
+                                // Regular text for non-Georgian messages
+                                Text(text)
+                                    .padding(12)
+                                    .background(bubbleColor)
+                                    .foregroundColor(textColor)
+                                    .cornerRadius(16)
+                                    .frame(maxWidth: maxBubbleWidth, alignment: isFromCurrentUser ? .trailing : .leading)
+                                    .onTapGesture(count: 2) {
+                                        handleDoubleTap()
+                                    }
                             }
                         }
                     }
@@ -128,6 +163,16 @@ struct MessageBubbleView: View {
             set: { nlSheetText = $0?.text }
         )) { payload in
             ScrollView { Text(payload.text).padding() }
+        }
+        // AI V3: Definition modal
+        .sheet(isPresented: $showDefinitionModal) {
+            if isLoadingDefinition {
+                DefinitionLoadingView()
+            } else if let error = definitionError {
+                DefinitionErrorView(error: error)
+            } else if let result = definitionResult {
+                DefinitionModalView(result: result)
+            }
         }
         .onAppear {
             // Load existing translations from message entity
@@ -288,6 +333,76 @@ struct MessageBubbleView: View {
                 self.nlSheetText = result
             }
         }
+    }
+    
+    // AI V3: Handle long-press for word definition lookup (from TappableTextView)
+    private func handleLongPressWord(word: String, fullContext: String) {
+        print("👆 [MessageBubble] Long-press for definition lookup")
+        print("📖 [MessageBubble] Word: \(word)")
+        print("📝 [MessageBubble] Context: \(fullContext)")
+        
+        // Haptic feedback already handled by TappableTextView
+        
+        // Show loading state
+        isLoadingDefinition = true
+        definitionError = nil
+        definitionResult = nil
+        showDefinitionModal = true
+        
+        // Fetch definition for the exact word that was pressed
+        Task { @MainActor in
+            do {
+                let result = try await DefinitionService.shared.fetchDefinition(
+                    word: word,
+                    conversationId: message.conversationId,
+                    fullContext: fullContext
+                )
+                
+                isLoadingDefinition = false
+                definitionResult = result
+                print("✅ [MessageBubble] Definition loaded for: \(word)")
+                
+            } catch {
+                isLoadingDefinition = false
+                definitionError = error
+                print("❌ [MessageBubble] Definition error: \(error)")
+            }
+        }
+    }
+    
+    // Legacy handler for expanded view long-press (still extracts first word)
+    private func handleLongPress(text: String) {
+        print("👆 [MessageBubble] Long-press in expanded view")
+        
+        // Extract first Georgian word as fallback
+        guard let extractedWord = extractFirstGeorgianWord(from: text) else {
+            print("⚠️ [MessageBubble] No Georgian word found")
+            return
+        }
+        
+        // Use the same handler with the extracted word
+        handleLongPressWord(word: extractedWord, fullContext: text)
+    }
+    
+    // Extract first Georgian word from text (used for expanded view)
+    private func extractFirstGeorgianWord(from text: String) -> String? {
+        let tagger = NSLinguisticTagger(tagSchemes: [.tokenType], options: 0)
+        tagger.string = text
+        
+        let range = NSRange(location: 0, length: (text as NSString).length)
+        var firstGeorgianWord: String? = nil
+        
+        tagger.enumerateTags(in: range, unit: .word, scheme: .tokenType, options: [.omitWhitespace, .omitPunctuation]) { _, tokenRange, _ in
+            if let swiftRange = Range(tokenRange, in: text) {
+                let word = String(text[swiftRange])
+                if GeorgianScriptDetector.containsGeorgian(word) {
+                    firstGeorgianWord = WordBoundaryDetector.stripPunctuation(from: word)
+                    return // Stop after first Georgian word
+                }
+            }
+        }
+        
+        return firstGeorgianWord
     }
 }
 
