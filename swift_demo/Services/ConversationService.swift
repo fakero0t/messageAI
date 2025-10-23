@@ -85,6 +85,8 @@ class ConversationService {
             ]
             try await conversationRef.setData(conversationData)
             print("🆕 Created new conversation in Firestore: \(conversationId)")
+            print("   Participants: \(userId1), \(userId2)")
+            print("   Type: 1-on-1")
             
             // Immediately save to local storage so it appears in the list
             try await MainActor.run {
@@ -140,20 +142,43 @@ class ConversationService {
             return
         }
         
-        print("🎧 Starting conversation listener for user: \(userId)")
+        print("🎧🎧🎧 [ConversationService] Starting conversation listener for user: \(userId)")
+        print("🎧🎧🎧 [ConversationService] Query: conversations where participants array-contains '\(userId)' order by lastMessageTime desc")
         
         let listener = db.collection("conversations")
             .whereField("participants", arrayContains: userId)
             .order(by: "lastMessageTime", descending: true)
-            .addSnapshotListener { snapshot, error in
+            .addSnapshotListener(includeMetadataChanges: true) { snapshot, error in
+                print("🔔🔔🔔 [ConversationService] LISTENER CALLBACK FIRED!")
                 if let error = error {
-                    print("❌ Error listening to conversations: \(error)")
+                    print("❌❌❌ Error listening to conversations: \(error)")
+                    print("❌❌❌ Error localized: \(error.localizedDescription)")
+                    if let nsError = error as NSError? {
+                        print("❌❌❌ Error domain: \(nsError.domain)")
+                        print("❌❌❌ Error code: \(nsError.code)")
+                        print("❌❌❌ Error userInfo: \(nsError.userInfo)")
+                    }
                     return
                 }
                 
-                guard let snapshot = snapshot else { return }
+                guard let snapshot = snapshot else {
+                    print("⚠️⚠️⚠️ Snapshot is nil!")
+                    return
+                }
                 
-                print("📬 Received \(snapshot.documentChanges.count) conversation changes")
+                print("📊 Snapshot metadata:")
+                print("   - isFromCache: \(snapshot.metadata.isFromCache)")
+                print("   - hasPendingWrites: \(snapshot.metadata.hasPendingWrites)")
+                print("   - Total documents: \(snapshot.documents.count)")
+                print("   - Document changes: \(snapshot.documentChanges.count)")
+                
+                // Skip metadata-only updates to avoid duplicate processing
+                if snapshot.metadata.hasPendingWrites {
+                    print("📝 Skipping snapshot with pending writes")
+                    return
+                }
+                
+                print("📬 Processing \(snapshot.documentChanges.count) conversation changes")
                 
                 snapshot.documentChanges.forEach { change in
                     if change.type == .added || change.type == .modified {
@@ -170,6 +195,8 @@ class ConversationService {
             }
         
         conversationListeners[userId] = listener
+        print("✅✅✅ [ConversationService] Listener registered for user: \(userId)")
+        print("✅✅✅ [ConversationService] Total active listeners: \(conversationListeners.count)")
     }
     
     func stopListeningToConversations(userId: String) {
@@ -208,12 +235,22 @@ class ConversationService {
     }
     
     private func parseConversation(from data: [String: Any]) throws -> ConversationSnapshot {
+        // Handle lastMessageTime being null or pending from server timestamp
+        let lastMessageTime: Date?
+        if let timestamp = data["lastMessageTime"] as? Timestamp {
+            lastMessageTime = timestamp.dateValue()
+        } else {
+            // Timestamp might be pending - use current time as placeholder
+            lastMessageTime = Date()
+            print("⚠️ Conversation \(data["id"] as? String ?? "unknown") has pending timestamp")
+        }
+        
         return ConversationSnapshot(
             id: data["id"] as? String ?? "",
             participantIds: data["participants"] as? [String] ?? [],
             isGroup: data["isGroup"] as? Bool ?? false,
             lastMessageText: data["lastMessageText"] as? String,
-            lastMessageTime: (data["lastMessageTime"] as? Timestamp)?.dateValue()
+            lastMessageTime: lastMessageTime
         )
     }
 }

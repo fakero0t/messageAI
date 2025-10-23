@@ -86,10 +86,14 @@ class ConversationListViewModel: ObservableObject {
     }
     
     private func observeAuthAndBootstrap() {
+        print("🚀🚀🚀 [ConversationListViewModel] observeAuthAndBootstrap called")
         // If already authenticated, bootstrap immediately
         if let id = AuthenticationService.shared.currentUser?.id, !id.isEmpty {
+            print("🚀🚀🚀 [ConversationListViewModel] User already authenticated: \(id)")
             loadConversations()
             startListening(for: id)
+        } else {
+            print("⚠️⚠️⚠️ [ConversationListViewModel] No authenticated user yet")
         }
         
         // Re-bootstrap when the authenticated user changes
@@ -98,6 +102,7 @@ class ConversationListViewModel: ObservableObject {
             .removeDuplicates()
             .sink { [weak self] userId in
                 guard let self = self else { return }
+                print("🔄🔄🔄 [ConversationListViewModel] Auth changed, new user: \(userId)")
                 self.loadConversations()
                 self.startListening(for: userId)
             }
@@ -197,12 +202,22 @@ class ConversationListViewModel: ObservableObject {
     }
     
     private func parseConversation(from data: [String: Any]) throws -> ConversationSnapshot {
+        // Handle lastMessageTime being null or pending from server timestamp
+        let lastMessageTime: Date?
+        if let timestamp = data["lastMessageTime"] as? Timestamp {
+            lastMessageTime = timestamp.dateValue()
+        } else {
+            // Timestamp might be pending - use current time as placeholder
+            lastMessageTime = Date()
+            print("⚠️ Conversation \(data["id"] as? String ?? "unknown") has pending timestamp")
+        }
+        
         return ConversationSnapshot(
             id: data["id"] as? String ?? "",
             participantIds: data["participants"] as? [String] ?? [],
             isGroup: data["isGroup"] as? Bool ?? false,
             lastMessageText: data["lastMessageText"] as? String,
-            lastMessageTime: (data["lastMessageTime"] as? Timestamp)?.dateValue()
+            lastMessageTime: lastMessageTime
         )
     }
     
@@ -251,28 +266,36 @@ class ConversationListViewModel: ObservableObject {
     }
     
     private func startListening(for userId: String) {
-        guard !userId.isEmpty else { return }
+        print("🎧🎧🎧 [ConversationListViewModel] startListening called for: \(userId)")
+        guard !userId.isEmpty else {
+            print("⚠️⚠️⚠️ [ConversationListViewModel] userId is empty, not starting listener")
+            return
+        }
         
         // If we were listening for a different user, stop it first
         if let prev = listeningUserId, prev != userId {
+            print("🔄 [ConversationListViewModel] Stopping previous listener for: \(prev)")
             conversationService.stopListeningToConversations(userId: prev)
         }
         listeningUserId = userId
         
-        print("🎧 [ConversationListViewModel] Starting conversation listener for user: \(userId)")
+        print("🎧🎧🎧 [ConversationListViewModel] Calling conversationService.listenToUserConversations for: \(userId)")
         conversationService.listenToUserConversations(userId: userId) { [weak self] snapshot in
-            print("📬 [ConversationListViewModel] Conversation update received: \(snapshot.id)")
+            print("📬📬📬 [ConversationListViewModel] Conversation update received: \(snapshot.id)")
             print("   Last message: \(snapshot.lastMessageText ?? "none")")
             Task {
                 await self?.handleConversationUpdate(snapshot)
             }
         }
+        print("✅✅✅ [ConversationListViewModel] Listener setup complete")
     }
     
     private func handleConversationUpdate(_ snapshot: ConversationSnapshot) async {
         print("🔄 [ConversationListViewModel] Handling conversation update for: \(snapshot.id)")
         print("   Last message: \(snapshot.lastMessageText ?? "none")")
         print("   Last message time: \(snapshot.lastMessageTime?.description ?? "none")")
+        print("   Participants: \(snapshot.participantIds.joined(separator: ", "))")
+        print("   Is group: \(snapshot.isGroup)")
         
         // Check if current user is still a participant
         let currentUserId = AuthenticationService.shared.currentUser?.id ?? ""
@@ -285,6 +308,12 @@ class ConversationListViewModel: ObservableObject {
             loadConversations()
             return
         }
+        
+        // Check if conversation exists locally
+        let existsLocally = await MainActor.run {
+            (try? localStorage.fetchConversation(byId: snapshot.id)) != nil
+        }
+        print("   Exists locally: \(existsLocally ? "YES" : "NO (NEW!)")")
         
         do {
             // Sync to local storage
@@ -302,6 +331,7 @@ class ConversationListViewModel: ObservableObject {
             
         } catch {
             print("❌ [ConversationListViewModel] Failed to handle conversation update: \(error)")
+            print("   Error details: \(error.localizedDescription)")
         }
     }
     

@@ -50,6 +50,10 @@ class GroupService {
         
         try await db.collection("conversations").document(groupId).setData(groupData)
         print("✅ Group created in Firestore")
+        print("   Group ID: \(groupId)")
+        print("   Participants: \(allParticipants.joined(separator: ", "))")
+        print("   Group name: \(name ?? "unnamed")")
+        print("   Creator: \(creatorId)")
         
         // Create in local storage immediately so it appears in conversation list
         try await MainActor.run {
