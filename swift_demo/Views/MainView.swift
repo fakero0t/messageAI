@@ -13,6 +13,8 @@ struct MainView: View {
     @State private var conversationToNavigateTo: String?
     
     var body: some View {
+        let isLearningModeEnabled = AuthenticationService.shared.currentUser?.georgianLearningMode ?? false
+        
         ZStack {
             TabView(selection: $selectedTab) {
                 ConversationListView(conversationToNavigateTo: $conversationToNavigateTo)
@@ -27,11 +29,14 @@ struct MainView: View {
                     }
                     .tag(1)
                 
-                PracticeView()
-                    .tabItem {
-                        Label("Practice", systemImage: "book.fill")
-                    }
-                    .tag(2)
+                // Conditionally show Practice tab based on Georgian Learning Mode
+                if isLearningModeEnabled {
+                    PracticeView()
+                        .tabItem {
+                            Label("Practice", systemImage: "book.fill")
+                        }
+                        .tag(2)
+                }
             }
             .onReceive(NotificationCenter.default.publisher(for: .navigateToConversation)) { notification in
                 if let conversationId = notification.userInfo?["conversationId"] as? String {
@@ -136,20 +141,33 @@ struct ProfileView: View {
                     }
                 }
                 
-                // PR-6: Geo Suggestions Settings
-                Section("Georgian Vocabulary Suggestions") {
-                    Toggle("Show word suggestions", isOn: Binding(
-                        get: { !UserDefaults.standard.bool(forKey: "geoSuggestionsDisabled") },
+                // Georgian Learning Mode - Master Toggle
+                Section("Georgian Learning") {
+                    Toggle("Georgian Learning Mode", isOn: Binding(
+                        get: { currentUser?.georgianLearningMode ?? false },
                         set: { enabled in
-                            UserDefaults.standard.set(!enabled, forKey: "geoSuggestionsDisabled")
-                            if !enabled {
-                                // Reset session when disabling
-                                GeoSuggestionService.shared.resetSession()
+                            guard let userId = currentUser?.id else { return }
+                            Task {
+                                do {
+                                    try await UserService.shared.updateGeorgianLearningMode(
+                                        userId: userId, 
+                                        enabled: enabled
+                                    )
+                                    if !enabled {
+                                        // Reset services when disabling
+                                        await MainActor.run {
+                                            GeoSuggestionService.shared.resetSession()
+                                            EnglishTranslationSuggestionService.shared.resetSession()
+                                        }
+                                    }
+                                } catch {
+                                    print("❌ Failed to update Georgian Learning Mode: \(error)")
+                                }
                             }
                         }
                     ))
                     
-                    Text("Get suggestions for related Georgian words based on your frequently used vocabulary")
+                    Text("Enable to access practice exercises and receive Georgian vocabulary suggestions while chatting")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }

@@ -12,23 +12,44 @@ import SwiftUI
 /// Think of this as a Vue component: <PracticeQuestionCard :item="currentItem" @select="handleSelect" />
 struct PracticeQuestionCard: View {
     let item: PracticeItem
+    let selectedLetter: String?
+    let showResult: Bool
     let onSelect: (String) -> Void
-    
-    @State private var selectedOption: String?
+    let onNext: (() -> Void)?
     
     var body: some View {
         VStack(spacing: 24) {
             // Word with missing letter
-            Text(item.displayWord)
-                .font(.system(size: 48, weight: .bold))
-                .foregroundColor(.primary)
-                .tracking(2)
-                .padding(.top, 40)
+            VStack(spacing: 8) {
+                Text(showResult ? item.word : item.displayWord)
+                    .font(.system(size: 48, weight: .bold))
+                    .foregroundColor(.primary)
+                    .tracking(2)
+                
+                Text(item.englishMeaning)
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(.secondary)
+            }
+            .padding(.top, 40)
             
-            Text("Choose the missing letter:")
-                .font(.system(size: 16, weight: .medium))
-                .foregroundColor(.secondary)
-                .padding(.top, 20)
+            if showResult {
+                // Result feedback
+                HStack(spacing: 8) {
+                    Image(systemName: isCorrect ? "checkmark.circle.fill" : "xmark.circle.fill")
+                        .font(.system(size: 20))
+                        .foregroundColor(isCorrect ? .green : .red)
+                    
+                    Text(isCorrect ? "Correct!" : "Incorrect")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(isCorrect ? .green : .red)
+                }
+                .padding(.top, 8)
+            } else {
+                Text("Choose the missing letter:")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(.secondary)
+                    .padding(.top, 20)
+            }
             
             // Multiple choice options
             VStack(spacing: 16) {
@@ -36,12 +57,12 @@ struct PracticeQuestionCard: View {
                     OptionButton(
                         letter: letter,
                         label: optionLabel(for: index),
-                        isSelected: selectedOption == letter,
+                        isSelected: selectedLetter == letter,
+                        isCorrect: letter == item.correctLetter,
+                        showResult: showResult,
                         onTap: {
-                            selectedOption = letter
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            // Small delay for visual feedback
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                            if !showResult {
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
                                 onSelect(letter)
                             }
                         }
@@ -51,10 +72,32 @@ struct PracticeQuestionCard: View {
             .padding(.horizontal, 32)
             .padding(.top, 8)
             
+            // Next button (only shown in result state)
+            if showResult, let onNext = onNext {
+                Button(action: {
+                    onNext()
+                }) {
+                    Text("Next")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                        .background(Color.blue)
+                        .cornerRadius(12)
+                }
+                .padding(.horizontal, 32)
+                .padding(.top, 8)
+            }
+            
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(.systemBackground))
+    }
+    
+    private var isCorrect: Bool {
+        guard let selected = selectedLetter else { return false }
+        return selected == item.correctLetter
     }
     
     private func optionLabel(for index: Int) -> String {
@@ -72,7 +115,47 @@ struct OptionButton: View {
     let letter: String
     let label: String
     let isSelected: Bool
+    let isCorrect: Bool
+    let showResult: Bool
     let onTap: () -> Void
+    
+    private var buttonColor: Color {
+        if showResult {
+            if isSelected {
+                // Show green if selected and correct, red if selected and wrong
+                return isCorrect ? .green : .red
+            } else if isCorrect {
+                // Also highlight the correct answer in green (for when user chose wrong)
+                return .green
+            }
+            return .gray
+        }
+        return isSelected ? .blue : .gray
+    }
+    
+    private var backgroundColor: Color {
+        if showResult {
+            if isSelected {
+                return isCorrect ? Color.green.opacity(0.1) : Color.red.opacity(0.1)
+            } else if isCorrect {
+                return Color.green.opacity(0.1)
+            }
+            return Color(.systemGray6)
+        }
+        return isSelected ? Color.blue.opacity(0.1) : Color(.systemGray6)
+    }
+    
+    private var borderColor: Color {
+        if showResult {
+            if isSelected {
+                return isCorrect ? .green : .red
+            } else if isCorrect {
+                return .green
+            }
+            return .clear
+        }
+        return isSelected ? .blue : .clear
+    }
     
     var body: some View {
         Button(action: onTap) {
@@ -82,7 +165,7 @@ struct OptionButton: View {
                     .font(.system(size: 20, weight: .bold))
                     .foregroundColor(.white)
                     .frame(width: 40, height: 40)
-                    .background(isSelected ? Color.blue : Color.gray)
+                    .background(buttonColor)
                     .clipShape(Circle())
                 
                 // Letter
@@ -91,19 +174,27 @@ struct OptionButton: View {
                     .foregroundColor(.primary)
                 
                 Spacer()
+                
+                // Checkmark or X icon when showing result
+                if showResult && (isSelected || isCorrect) {
+                    Image(systemName: isCorrect ? "checkmark.circle.fill" : "xmark.circle.fill")
+                        .font(.system(size: 24))
+                        .foregroundColor(isCorrect ? .green : .red)
+                }
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 16)
             .background(
                 RoundedRectangle(cornerRadius: 16)
-                    .fill(isSelected ? Color.blue.opacity(0.1) : Color(.systemGray6))
+                    .fill(backgroundColor)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 16)
-                    .stroke(isSelected ? Color.blue : Color.clear, lineWidth: 2)
+                    .stroke(borderColor, lineWidth: 2)
             )
         }
         .buttonStyle(PlainButtonStyle())
+        .disabled(showResult) // Disable interaction when showing result
     }
 }
 
@@ -114,10 +205,16 @@ struct OptionButton: View {
             missingIndex: 3,
             correctLetter: "ა",
             options: ["ა", "ო", "ე"],
-            explanation: "Common greeting - 'hello'"
+            explanation: "Common greeting - 'hello'",
+            englishMeaning: "hello"
         ),
+        selectedLetter: nil,
+        showResult: false,
         onSelect: { letter in
             print("Selected: \(letter)")
+        },
+        onNext: {
+            print("Next tapped")
         }
     )
 }

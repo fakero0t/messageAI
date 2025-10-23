@@ -41,29 +41,22 @@ struct PracticeView: View {
                             viewModel.restartBatch()
                         }
                     )
-                } else if viewModel.showResult, let item = viewModel.currentItem, let selected = viewModel.selectedLetter {
-                    // Result state
-                    PracticeResultCard(
-                        item: item,
-                        selectedLetter: selected,
-                        isCorrect: viewModel.isAnswerCorrect,
-                        onNext: {
-                            if viewModel.hasMoreQuestions {
-                                viewModel.nextQuestion()
-                            }
-                        }
-                    )
                 } else if let item = viewModel.currentItem {
-                    // Question state
+                    // Question state (includes result state)
                     VStack(spacing: 0) {
                         // Progress indicator
                         progressBar
                         
                         PracticeQuestionCard(
                             item: item,
+                            selectedLetter: viewModel.selectedLetter,
+                            showResult: viewModel.showResult,
                             onSelect: { letter in
                                 viewModel.submitAnswer(letter)
-                            }
+                            },
+                            onNext: viewModel.hasMoreQuestions ? {
+                                viewModel.nextQuestion()
+                            } : nil
                         )
                     }
                 }

@@ -15,6 +15,7 @@ struct User: Codable, Identifiable, Hashable {
     var online: Bool = false
     var lastSeen: Date?
     var profileImageUrl: String? // PR-12: Profile picture URL
+    var georgianLearningMode: Bool = false // Georgian Learning Mode toggle - default OFF
     
     var statusText: String {
         if online {

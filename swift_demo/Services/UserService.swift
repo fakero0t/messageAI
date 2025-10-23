@@ -176,6 +176,34 @@ class UserService {
         return urlString
     }
     
+    /// Update Georgian Learning Mode preference
+    /// - Parameters:
+    ///   - userId: User ID
+    ///   - enabled: Whether to enable Georgian Learning Mode
+    /// - Throws: Update errors
+    func updateGeorgianLearningMode(userId: String, enabled: Bool) async throws {
+        print("🎓 [UserService] Updating Georgian Learning Mode for user: \(userId) to \(enabled)")
+        
+        // 1. Update Firestore
+        try await db.collection("users").document(userId).updateData([
+            "georgianLearningMode": enabled
+        ])
+        
+        print("✅ [UserService] Firestore updated with Georgian Learning Mode: \(enabled)")
+        
+        // 2. Update local currentUser object
+        if var currentUser = AuthenticationService.shared.currentUser,
+           currentUser.id == userId {
+            currentUser.georgianLearningMode = enabled
+            await MainActor.run {
+                AuthenticationService.shared.currentUser = currentUser
+            }
+            print("✅ [UserService] Local user object updated")
+        }
+        
+        print("✅ [UserService] Georgian Learning Mode update complete")
+    }
+    
     /// Delete profile picture from Firebase Storage
     /// - Parameter userId: User ID
     /// - Throws: Deletion errors

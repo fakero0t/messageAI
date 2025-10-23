@@ -129,29 +129,31 @@ Generate 15 practice items focusing on these problematic letters. Each item shou
 - NEVER use misspelled words from the user's messages
 - If the user misspells a word, use the CORRECT spelling in practice
 - Choose words relevant to conversation topics
-- Remove ONE letter that the user struggles with
-- Provide 3 letter choices:
-  * The correct letter
-  * A commonly confused Georgian letter (like ი/უ, ა/ო, ე/ი)
-  * A visually similar Georgian letter
+- Identify ONE letter position to remove from the word
+- Set correctLetter to the ACTUAL letter that exists at that position in the word
+- Suggest 2 confusion letters that could plausibly fit in that position but are wrong
+- Consider: visual similarity (ი/უ), phonetic similarity (ა/ო), position-specific patterns, and the user's actual confusion patterns
 
 Respond ONLY with valid JSON array:
 [
   {
-    "word": "complete_georgian_word",
-    "missingIndex": 3,
-    "correctLetter": "ი",
-    "options": ["ი", "უ", "ო"],
-    "explanation": "This letter is commonly used in this position for verbs"
+    "word": "სახლი",
+    "missingIndex": 1,
+    "correctLetter": "ა",
+    "confusionLetters": ["ო", "ე"],
+    "explanation": "Common word - house",
+    "englishMeaning": "house"
   }
 ]
 
-CRITICAL RULES:
+CRITICAL VALIDATION RULES:
 - Use ONLY real Georgian words with correct spelling
 - NEVER include misspelled or invented words
-- Validate that each word is proper Georgian vocabulary
+- missingIndex must be valid (0 to word.length-1)
+- correctLetter MUST be the actual character at word[missingIndex]
+  Example: if word="სახლი" and missingIndex=1, then correctLetter MUST be "ა" (the 2nd character)
+- confusionLetters must be 2 DIFFERENT Georgian letters that are NOT the correctLetter
 - Use only Georgian script (Unicode U+10A0 to U+10FF)
-- Ensure options are randomized (correct letter not always first)
 - Focus on letters user struggles with based on their messages
 - Keep explanations brief and helpful (under 80 characters)
 - Return exactly 15 items`;
@@ -173,11 +175,10 @@ Generate 15 practice items using common Georgian words suitable for beginners.
 Each item should:
 - Use ONLY correctly spelled, real Georgian words from standard vocabulary
 - Choose common, useful Georgian words beginners should learn
-- Remove ONE letter
-- Provide 3 letter choices:
-  * The correct letter
-  * A commonly confused Georgian letter (like ი/უ, ა/ო, ე/ი)
-  * A visually similar Georgian letter
+- Identify ONE letter position to remove from the word
+- Set correctLetter to the ACTUAL letter that exists at that position in the word
+- Suggest 2 confusion letters that could plausibly fit in that position but are wrong
+- Consider: visual similarity (ი/უ), phonetic similarity (ა/ო), commonly confused pairs (ე/ი, ბ/დ, გ/ყ)
 
 Respond ONLY with valid JSON array:
 [
@@ -185,17 +186,20 @@ Respond ONLY with valid JSON array:
     "word": "გამარჯობა",
     "missingIndex": 3,
     "correctLetter": "ა",
-    "options": ["ა", "ო", "ე"],
-    "explanation": "Common greeting - 'hello'"
+    "confusionLetters": ["ო", "ე"],
+    "explanation": "Common greeting",
+    "englishMeaning": "hello"
   }
 ]
 
-CRITICAL RULES:
+CRITICAL VALIDATION RULES:
 - Use ONLY real Georgian words with correct spelling
 - NEVER include misspelled or invented words
-- Validate that each word is proper Georgian vocabulary
+- missingIndex must be valid (0 to word.length-1)
+- correctLetter MUST be the actual character at word[missingIndex]
+  Example: if word="გამარჯობა" and missingIndex=3, then correctLetter MUST be "ა" (the 4th character)
+- confusionLetters must be 2 DIFFERENT Georgian letters that are NOT the correctLetter
 - Use only Georgian script (Unicode U+10A0 to U+10FF)
-- Ensure options are randomized (correct letter not always first)
 - Focus on commonly confused letters (ი/უ, ა/ო, ე/ი, ბ/დ, გ/ყ, etc.)
 - Keep explanations brief and helpful (under 80 characters)
 - Return exactly 15 items`;
@@ -255,29 +259,77 @@ async function callGPT4(systemPrompt, userPrompt, apiKey) {
       throw new Error('Expected non-empty array from GPT-4');
     }
     
-    // Add IDs and validate each item
+    // Add IDs, validate, and assemble options
+    // Filter out invalid items instead of throwing
     const items = parsed.map((item, index) => {
-      if (!item.word || !item.correctLetter || !Array.isArray(item.options)) {
-        throw new Error(`Invalid item structure at index ${index}`);
+      try {
+        // Validate structure
+        if (!item.word || !item.correctLetter || !Array.isArray(item.confusionLetters) || !item.englishMeaning) {
+          console.warn(`Item ${index}: Invalid structure - skipping`);
+          return null;
+        }
+        
+        // Validate confusionLetters array has exactly 2 letters
+        if (item.confusionLetters.length !== 2) {
+          console.warn(`Item ${index}: confusionLetters must have exactly 2 letters, got ${item.confusionLetters.length} - skipping`);
+          return null;
+        }
+        
+        // Validate missingIndex is within word bounds
+        // Use Array.from() to properly handle Georgian Unicode characters
+        const wordChars = Array.from(item.word);
+        const wordLength = wordChars.length;
+        let missingIndex = item.missingIndex ?? 0;
+        
+        if (missingIndex < 0 || missingIndex >= wordLength) {
+          console.warn(`Item ${index}: invalid missingIndex ${missingIndex} for word "${item.word}" (length ${wordLength}) - skipping`);
+          return null;
+        }
+        
+        // CRITICAL: Validate that correctLetter matches the actual letter at missingIndex
+        const actualLetterAtIndex = wordChars[missingIndex];
+        if (item.correctLetter !== actualLetterAtIndex) {
+          console.warn(`Item ${index}: GPT-4 mismatch - correctLetter "${item.correctLetter}" != actual "${actualLetterAtIndex}" at index ${missingIndex} in word "${item.word}" - skipping`);
+          return null;
+        }
+        
+        // Assemble options: correct letter + 2 confusion letters, then shuffle
+        const options = [
+          item.correctLetter,
+          item.confusionLetters[0],
+          item.confusionLetters[1]
+        ].sort(() => Math.random() - 0.5);
+        
+        // Final validation: ensure no duplicate letters in options
+        const uniqueOptions = new Set(options);
+        if (uniqueOptions.size !== 3) {
+          console.warn(`Item ${index}: Duplicate letters in options for word "${item.word}" - skipping`);
+          return null;
+        }
+        
+        return {
+          id: `${Date.now()}_${index}`,
+          word: item.word,
+          missingIndex: missingIndex,
+          correctLetter: item.correctLetter,
+          options: options,
+          explanation: item.explanation || '',
+          englishMeaning: item.englishMeaning
+        };
+      } catch (error) {
+        console.warn(`Item ${index}: Validation error - ${error.message} - skipping`);
+        return null;
       }
-      
-      // CRITICAL: Ensure correct letter is always in options
-      let options = item.options;
-      if (!options.includes(item.correctLetter)) {
-        console.warn(`Item ${index}: correctLetter "${item.correctLetter}" not in options, adding it`);
-        // Replace the last option with the correct letter if not present
-        options = [options[0], options[1] || options[0], item.correctLetter];
-      }
-      
-      return {
-        id: `${Date.now()}_${index}`,
-        word: item.word,
-        missingIndex: item.missingIndex || 0,
-        correctLetter: item.correctLetter,
-        options: options,
-        explanation: item.explanation || ''
-      };
-    });
+    }).filter(item => item !== null); // Remove invalid items
+    
+    // Ensure we have at least some valid items
+    if (items.length === 0) {
+      throw new Error('GPT-4 returned no valid practice items');
+    }
+    
+    if (items.length < 10) {
+      console.warn(`Only ${items.length} valid items out of ${parsed.length} - some items were rejected`);
+    }
     
     return items;
     

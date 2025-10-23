@@ -74,7 +74,8 @@ struct PracticeResultCard: View {
                 missingIndex: 3,
                 correctLetter: "ა",
                 options: ["ა", "ო", "ე"],
-                explanation: "Common greeting - 'hello'"
+                explanation: "Common greeting - 'hello'",
+                englishMeaning: "hello"
             ),
             selectedLetter: "ა",
             isCorrect: true,

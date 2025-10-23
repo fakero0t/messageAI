@@ -16,6 +16,7 @@ struct PracticeItem: Codable, Identifiable, Equatable {
     let correctLetter: String // The correct letter that was removed
     let options: [String] // 3 letter choices (includes correctLetter)
     let explanation: String // Brief explanation for learning
+    let englishMeaning: String // English translation of the word
     
     /// Display word with underscore at missing position
     var displayWord: String {
@@ -35,17 +36,18 @@ struct PracticeItem: Codable, Identifiable, Equatable {
     }
     
     enum CodingKeys: String, CodingKey {
-        case id, word, missingIndex, correctLetter, options, explanation
+        case id, word, missingIndex, correctLetter, options, explanation, englishMeaning
     }
     
     // Default ID generation if not provided
-    init(id: String = UUID().uuidString, word: String, missingIndex: Int, correctLetter: String, options: [String], explanation: String) {
+    init(id: String = UUID().uuidString, word: String, missingIndex: Int, correctLetter: String, options: [String], explanation: String, englishMeaning: String) {
         self.id = id
         self.word = word
         self.missingIndex = missingIndex
         self.correctLetter = correctLetter
         self.options = options
         self.explanation = explanation
+        self.englishMeaning = englishMeaning
     }
 }
 

@@ -36,8 +36,8 @@ struct GeoSuggestionBar: View {
     @State private var suggestionType: SuggestionType = .georgian
     
     var body: some View {
-        // PR-6: Respect global opt-out setting
-        let isEnabled = !UserDefaults.standard.bool(forKey: "geoSuggestionsDisabled")
+        // Check User model for Georgian Learning Mode setting
+        let isEnabled = AuthenticationService.shared.currentUser?.georgianLearningMode ?? false
         
         Group {
             if !isEnabled {
@@ -157,8 +157,8 @@ struct GeoSuggestionBar: View {
         .animation(.easeInOut(duration: 0.2), value: hasError)
         .animation(.easeInOut(duration: 0.2), value: suggestions.count)
         .onChange(of: messageText) { oldValue, newValue in
-            // PR-6: Only check if enabled
-            let isEnabled = !UserDefaults.standard.bool(forKey: "geoSuggestionsDisabled")
+            // Check User model for Georgian Learning Mode setting
+            let isEnabled = AuthenticationService.shared.currentUser?.georgianLearningMode ?? false
             guard isEnabled else { return }
             
             // Trigger suggestion check when text changes
