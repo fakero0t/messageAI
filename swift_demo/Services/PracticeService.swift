@@ -27,14 +27,16 @@ class PracticeService {
     
     /// Fetch a practice batch for the current user
     /// Returns cached batch if available and fresh, otherwise calls Firebase
-    func fetchPracticeBatch() async throws -> PracticeBatchResponse {
+    /// - Parameter forceRefresh: If true, bypasses both client and server caches
+    func fetchPracticeBatch(forceRefresh: Bool = false) async throws -> PracticeBatchResponse {
         // Check authentication
         guard let userId = AuthenticationService.shared.currentUser?.id else {
             throw PracticeError.notAuthenticated
         }
         
-        // Check in-memory cache
-        if let cached = cachedBatch,
+        // Check in-memory cache (unless force refresh)
+        if !forceRefresh,
+           let cached = cachedBatch,
            let timestamp = cacheTimestamp,
            Date().timeIntervalSince(timestamp) < cacheTTL {
             print("✅ [PracticeService] Using cached batch")
@@ -47,7 +49,7 @@ class PracticeService {
         }
         
         // Fetch from Firebase
-        print("🔄 [PracticeService] Fetching fresh batch from server...")
+        print("🔄 [PracticeService] Fetching fresh batch from server... (forceRefresh: \(forceRefresh))")
         let startTime = Date()
         
         do {
@@ -55,7 +57,8 @@ class PracticeService {
             let callable = functions.httpsCallable("generatePractice")
             
             let params: [String: Any] = [
-                "userId": userId
+                "userId": userId,
+                "forceRefresh": forceRefresh
             ]
             
             let result = try await callable.call(params)

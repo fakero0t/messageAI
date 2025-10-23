@@ -55,7 +55,57 @@ class PracticeViewModel: ObservableObject {
     
     // MARK: - Public API
     
-    /// Generate a new practice batch
+    /// Load initial practice batch (uses cache if available)
+    func loadInitialBatch() async {
+        isLoading = true
+        error = nil
+        selectedLetter = nil
+        showResult = false
+        currentIndex = 0
+        
+        // Log analytics
+        logAnalytics(event: "practice_batch_requested", params: [
+            "forceRefresh": false,
+            "initial": true
+        ])
+        
+        do {
+            // Use cache if available for initial load
+            let response = try await practiceService.fetchPracticeBatch(forceRefresh: false)
+            
+            await MainActor.run {
+                currentBatch = response.items
+                practiceSource = response.source
+                isLoading = false
+                
+                // Log success
+                logAnalytics(event: "practice_batch_generated", params: [
+                    "source": response.source.rawValue,
+                    "itemCount": response.items.count,
+                    "initial": true
+                ])
+            }
+            
+        } catch let practiceError as PracticeError {
+            await MainActor.run {
+                error = practiceError
+                isLoading = false
+                
+                // Log error
+                logAnalytics(event: "practice_batch_error", params: [
+                    "errorType": String(describing: practiceError),
+                    "initial": true
+                ])
+            }
+        } catch {
+            await MainActor.run {
+                self.error = .generationFailed
+                isLoading = false
+            }
+        }
+    }
+    
+    /// Generate a new practice batch (bypasses caches for fresh questions)
     func generateNewBatch() async {
         isLoading = true
         error = nil
@@ -64,10 +114,14 @@ class PracticeViewModel: ObservableObject {
         currentIndex = 0
         
         // Log analytics
-        logAnalytics(event: "practice_batch_requested")
+        logAnalytics(event: "practice_batch_requested", params: [
+            "forceRefresh": true,
+            "initial": false
+        ])
         
         do {
-            let response = try await practiceService.fetchPracticeBatch()
+            // Force refresh to bypass both client and server caches
+            let response = try await practiceService.fetchPracticeBatch(forceRefresh: true)
             
             await MainActor.run {
                 currentBatch = response.items

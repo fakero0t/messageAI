@@ -64,10 +64,10 @@ struct PracticeView: View {
             .navigationTitle("Practice")
             .navigationBarTitleDisplayMode(.inline)
             .onAppear {
-                // Auto-generate batch on first appear if empty
+                // Auto-load batch on first appear if empty (uses cache if available)
                 if viewModel.currentBatch.isEmpty && viewModel.error == nil && !viewModel.isLoading {
                     Task {
-                        await viewModel.generateNewBatch()
+                        await viewModel.loadInitialBatch()
                     }
                 }
             }
@@ -168,7 +168,7 @@ struct PracticeView: View {
             
             Button(action: {
                 Task {
-                    await viewModel.generateNewBatch()
+                    await viewModel.loadInitialBatch()
                 }
             }) {
                 HStack {

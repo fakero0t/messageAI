@@ -90,17 +90,93 @@ function hasGeorgianScript(text) {
 }
 
 /**
+ * Check if a word is likely a valid Georgian word
+ * - Must contain only Georgian characters (U+10A0 to U+10FF)
+ * - Must be between 2-20 characters long (realistic Georgian word length)
+ * - No mixed scripts, numbers, or special characters
+ * - No excessive character repetition (e.g., "ააააა" likely an error)
+ */
+function isValidGeorgianWord(word) {
+  if (!word || word.length < 2 || word.length > 20) {
+    return false;
+  }
+  
+  // Only allow Georgian Unicode characters
+  const georgianOnlyRegex = /^[\u10A0-\u10FF]+$/;
+  if (!georgianOnlyRegex.test(word)) {
+    return false;
+  }
+  
+  // Check for excessive repetition (same character 4+ times in a row)
+  // This catches typos like "ააააააა"
+  const repetitionRegex = /(.)\1{3,}/;
+  if (repetitionRegex.test(word)) {
+    return false;
+  }
+  
+  // Check for realistic character distribution
+  // Georgian words typically have a mix of vowels and consonants
+  const chars = Array.from(word);
+  const uniqueChars = new Set(chars);
+  
+  // If 80%+ of the word is the same character, it's likely an error
+  if (uniqueChars.size === 1 && word.length > 2) {
+    return false;
+  }
+  
+  return true;
+}
+
+/**
+ * Extract valid Georgian words from text
+ * Filters out likely misspellings, mixed-script, or non-Georgian words
+ * Note: Uses heuristics (not a full dictionary) to filter obvious errors
+ */
+function extractValidGeorgianWords(text) {
+  if (!text) return [];
+  
+  // Split by whitespace and punctuation
+  const words = text.split(/[\s.,!?;:()[\]{}"""''\-—]+/);
+  
+  // Filter to only valid Georgian words using heuristics
+  const validWords = words.filter(word => isValidGeorgianWord(word));
+  
+  // Log filtering stats for debugging
+  if (words.length > 0 && validWords.length < words.length) {
+    const filtered = words.length - validWords.length;
+    console.log(`Filtered ${filtered}/${words.length} words from message`);
+  }
+  
+  return validWords;
+}
+
+/**
  * Build conversation summaries for GPT-4 context
+ * Only includes valid, correctly-spelled Georgian words
  */
 function buildConversationContext(conversations) {
   let context = '';
+  let totalWordsIncluded = 0;
+  let totalMessagesProcessed = 0;
   
   conversations.forEach((conv, index) => {
     context += `\n--- Conversation ${index + 1} ---\n`;
     conv.messages.forEach(msg => {
-      context += `${msg.text}\n`;
+      totalMessagesProcessed++;
+      
+      // Extract only valid Georgian words from the message
+      const validWords = extractValidGeorgianWords(msg.text);
+      
+      // Only include if there are valid words
+      if (validWords.length > 0) {
+        totalWordsIncluded += validWords.length;
+        // Rejoin words with spaces
+        context += `${validWords.join(' ')}\n`;
+      }
     });
   });
+  
+  console.log(`Built context: ${totalWordsIncluded} valid words from ${totalMessagesProcessed} messages`);
   
   return context;
 }
@@ -114,21 +190,22 @@ async function generatePersonalizedPractice(conversations, apiKey) {
   const systemPrompt = `You are a Georgian language teacher creating personalized spelling practice for an English speaker learning Georgian.
 
 CONTEXT:
-The user has sent the following messages in their conversations:
+The user has sent the following Georgian words in their conversations (only correctly-spelled, pure Georgian words are included):
 ${contextStr}
 
 TASK:
-Analyze the user's Georgian text for letter confusion patterns:
+Analyze the user's Georgian vocabulary for letter confusion patterns:
 1. Letters they frequently misplace (wrong position in words)
 2. Letters they avoid using
 3. Letters they overuse incorrectly
 4. Common misspellings
 
 Generate 15 practice items focusing on these problematic letters. Each item should:
+- Prioritize words from the user's conversation context when available
+- If context is insufficient, supplement with common, correctly-spelled Georgian words that beginners should learn
 - Use ONLY correctly spelled, real Georgian words from standard vocabulary
-- NEVER use misspelled words from the user's messages
-- If the user misspells a word, use the CORRECT spelling in practice
-- Choose words relevant to conversation topics
+- NEVER use misspelled words - always use CORRECT spellings
+- Choose words relevant to conversation topics or common beginner vocabulary
 - Identify ONE letter position to remove from the word
 - Set correctLetter to the ACTUAL letter that exists at that position in the word
 - Suggest 2 confusion letters that could plausibly fit in that position but are wrong
@@ -147,18 +224,20 @@ Respond ONLY with valid JSON array:
 ]
 
 CRITICAL VALIDATION RULES:
-- Use ONLY real Georgian words with correct spelling
-- NEVER include misspelled or invented words
+- Use ONLY real, correctly-spelled Georgian words from standard vocabulary
+- NEVER include misspelled, invented, or nonsense words
+- When supplementing beyond user context, use common beginner words (გამარჯობა, სახლი, წიგნი, etc.)
+- ALL words must follow the same standards whether from context or supplemented
 - missingIndex must be valid (0 to word.length-1)
 - correctLetter MUST be the actual character at word[missingIndex]
   Example: if word="სახლი" and missingIndex=1, then correctLetter MUST be "ა" (the 2nd character)
 - confusionLetters must be 2 DIFFERENT Georgian letters that are NOT the correctLetter
 - Use only Georgian script (Unicode U+10A0 to U+10FF)
-- Focus on letters user struggles with based on their messages
+- Focus on letters user struggles with based on their messages (or common confusion pairs if supplementing)
 - Keep explanations brief and helpful (under 80 characters)
 - Return exactly 15 items`;
 
-  const userPrompt = 'Analyze the conversation history and generate personalized spelling practice focusing on letters the user struggles with.';
+  const userPrompt = 'Analyze the conversation history and generate 15 personalized spelling practice items. If the vocabulary context is limited, supplement with correctly-spelled common Georgian words that beginners should learn. Focus on letters the user struggles with or commonly confused letter pairs.';
   
   return await callGPT4(systemPrompt, userPrompt, apiKey);
 }
@@ -174,7 +253,8 @@ Generate 15 practice items using common Georgian words suitable for beginners.
 
 Each item should:
 - Use ONLY correctly spelled, real Georgian words from standard vocabulary
-- Choose common, useful Georgian words beginners should learn
+- NEVER use misspelled, invented, or nonsense words
+- Choose common, useful Georgian words beginners should learn (გამარჯობა, სახლი, წიგნი, მადლობა, etc.)
 - Identify ONE letter position to remove from the word
 - Set correctLetter to the ACTUAL letter that exists at that position in the word
 - Suggest 2 confusion letters that could plausibly fit in that position but are wrong
@@ -193,8 +273,9 @@ Respond ONLY with valid JSON array:
 ]
 
 CRITICAL VALIDATION RULES:
-- Use ONLY real Georgian words with correct spelling
-- NEVER include misspelled or invented words
+- Use ONLY real, correctly-spelled Georgian words from standard vocabulary
+- NEVER include misspelled, invented, or nonsense words
+- ALL words must be common beginner vocabulary that learners should know
 - missingIndex must be valid (0 to word.length-1)
 - correctLetter MUST be the actual character at word[missingIndex]
   Example: if word="გამარჯობა" and missingIndex=3, then correctLetter MUST be "ა" (the 4th character)
@@ -204,7 +285,7 @@ CRITICAL VALIDATION RULES:
 - Keep explanations brief and helpful (under 80 characters)
 - Return exactly 15 items`;
 
-  const userPrompt = 'Generate generic spelling practice for a beginner learning Georgian.';
+  const userPrompt = 'Generate 15 spelling practice items using common, correctly-spelled Georgian words that beginners should learn. Focus on commonly confused letter pairs.';
   
   return await callGPT4(systemPrompt, userPrompt, apiKey);
 }
@@ -448,18 +529,24 @@ exports.generatePractice = functions
       }
       
       const userId = context.auth.uid;
+      const forceRefresh = data.forceRefresh === true;
       
       // Rate limiting
       await checkRateLimit(userId);
       
-      // Check cache first
-      const cached = await checkPracticeCache(userId);
-      if (cached) {
-        return {
-          batch: cached.batch,
-          source: cached.source,
-          messageCount: cached.metadata.messageCount
-        };
+      // Check cache first (unless force refresh requested)
+      if (!forceRefresh) {
+        const cached = await checkPracticeCache(userId);
+        if (cached) {
+          console.log(`Returning cached batch for user ${userId}`);
+          return {
+            batch: cached.batch,
+            source: cached.source,
+            messageCount: cached.metadata.messageCount
+          };
+        }
+      } else {
+        console.log(`Force refresh requested for user ${userId} - bypassing cache`);
       }
       
       // Get OpenAI key
