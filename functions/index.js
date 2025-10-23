@@ -9,6 +9,9 @@ const db = admin.firestore();
 const { getWordDefinition } = require('./definitionFunction');
 const { suggestEnglishToGeorgian } = require('./englishTranslationFunction');
 
+// AI V4: Import practice function
+const { generatePractice } = require('./practiceFunction');
+
 // OpenAI key helper
 function getOpenAIKey() {
   try {
@@ -567,3 +570,6 @@ exports.suggestRelatedWords = functions
 // AI V3: Export new functions
 exports.getWordDefinition = getWordDefinition;
 exports.suggestEnglishToGeorgian = suggestEnglishToGeorgian;
+
+// AI V4: Export practice function
+exports.generatePractice = generatePractice;

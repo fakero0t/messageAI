@@ -26,6 +26,12 @@ struct MainView: View {
                         Label("Profile", systemImage: "person")
                     }
                     .tag(1)
+                
+                PracticeView()
+                    .tabItem {
+                        Label("Practice", systemImage: "book.fill")
+                    }
+                    .tag(2)
             }
             .onReceive(NotificationCenter.default.publisher(for: .navigateToConversation)) { notification in
                 if let conversationId = notification.userInfo?["conversationId"] as? String {
