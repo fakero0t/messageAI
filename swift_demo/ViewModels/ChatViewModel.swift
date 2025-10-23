@@ -785,6 +785,12 @@ class ChatViewModel: ObservableObject {
                 do {
                     try await localStorage.incrementUnreadCount(conversationId: conversationId)
                     print("✅ [ChatViewModel] Unread count incremented for: \(conversationId)")
+                    
+                    // Notify ConversationListViewModel to refresh
+                    await MainActor.run {
+                        NotificationCenter.default.post(name: .unreadCountDidChange, object: nil)
+                        print("📢 [ChatViewModel] Posted unreadCountDidChange notification")
+                    }
                 } catch {
                     print("❌ [ChatViewModel] Failed to increment unread count: \(error)")
                 }

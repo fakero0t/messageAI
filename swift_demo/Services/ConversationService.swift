@@ -12,6 +12,7 @@ struct ConversationSnapshot {
     let id: String
     let participantIds: [String]
     let isGroup: Bool
+    let groupName: String?
     let lastMessageText: String?
     let lastMessageTime: Date?
 }
@@ -31,10 +32,11 @@ class ConversationService {
     ) async throws {
         let conversationRef = db.collection("conversations").document(conversationId)
         
+        // Don't include isGroup in updates - it's set at creation and never changes
+        // This prevents accidentally overwriting group conversations as non-groups
         let conversationData: [String: Any] = [
             "id": conversationId,
             "participants": participants,
-            "isGroup": false,
             "lastMessageText": lastMessage,
             "lastMessageTime": FieldValue.serverTimestamp()
         ]
@@ -44,24 +46,40 @@ class ConversationService {
         print("💬 Conversation updated in Firestore: \(conversationId)")
         
         // Update local storage
-        try await MainActor.run {
-            // Check if conversation exists
-            if let existingConversation = try? localStorage.fetchConversation(byId: conversationId) {
+        // First check if conversation exists locally
+        let conversationExists = await MainActor.run {
+            (try? localStorage.fetchConversation(byId: conversationId)) != nil
+        }
+        
+        if conversationExists {
+            // Update existing conversation
+            try await MainActor.run {
                 try localStorage.updateConversation(
                     conversationId: conversationId,
                     lastMessage: lastMessage,
                     timestamp: Date()
                 )
-            } else {
-                // Create new conversation
+                // Notify conversation list to reload immediately
+                NotificationCenter.default.post(name: .conversationDidUpdate, object: nil)
+            }
+        } else {
+            // Conversation doesn't exist locally - fetch from Firestore to get correct isGroup value
+            let firestoreDoc = try? await conversationRef.getDocument()
+            let isGroup = firestoreDoc?.data()?["isGroup"] as? Bool ?? false
+            
+            print("⚠️ Conversation not in local storage - creating with isGroup: \(isGroup)")
+            
+            try await MainActor.run {
                 let conversation = ConversationEntity(
                     id: conversationId,
                     participantIds: participants,
-                    isGroup: false
+                    isGroup: isGroup
                 )
                 conversation.lastMessageText = lastMessage
                 conversation.lastMessageTime = Date()
                 try localStorage.saveConversation(conversation)
+                // Notify conversation list to reload immediately
+                NotificationCenter.default.post(name: .conversationDidUpdate, object: nil)
             }
         }
     }
@@ -214,6 +232,9 @@ class ConversationService {
                     print("🔄 Updating existing conversation: \(snapshot.id)")
                     existingConversation.lastMessageText = snapshot.lastMessageText
                     existingConversation.lastMessageTime = snapshot.lastMessageTime
+                    if snapshot.isGroup {
+                        existingConversation.groupName = snapshot.groupName
+                    }
                     // SwiftData auto-saves changes to tracked objects
                 } else {
                     // Create new
@@ -221,7 +242,8 @@ class ConversationService {
                     let conversation = ConversationEntity(
                         id: snapshot.id,
                         participantIds: snapshot.participantIds,
-                        isGroup: snapshot.isGroup
+                        isGroup: snapshot.isGroup,
+                        groupName: snapshot.groupName
                     )
                     conversation.lastMessageText = snapshot.lastMessageText
                     conversation.lastMessageTime = snapshot.lastMessageTime
@@ -245,10 +267,19 @@ class ConversationService {
             print("⚠️ Conversation \(data["id"] as? String ?? "unknown") has pending timestamp")
         }
         
+        // Parse groupName - treat empty string as nil
+        let groupName: String?
+        if let name = data["groupName"] as? String, !name.isEmpty {
+            groupName = name
+        } else {
+            groupName = nil
+        }
+        
         return ConversationSnapshot(
             id: data["id"] as? String ?? "",
             participantIds: data["participants"] as? [String] ?? [],
             isGroup: data["isGroup"] as? Bool ?? false,
+            groupName: groupName,
             lastMessageText: data["lastMessageText"] as? String,
             lastMessageTime: lastMessageTime
         )

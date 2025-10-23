@@ -17,6 +17,7 @@ struct GroupInfoView: View {
     @State private var newParticipantId = ""
     @State private var errorMessage: String?
     @State private var isLoading = true
+    @State private var isSearching = false
     
     var body: some View {
         NavigationStack {
@@ -108,18 +109,20 @@ struct GroupInfoView: View {
                 }
             }
             .alert("Add Participant", isPresented: $showAddParticipant) {
-                TextField("User ID", text: $newParticipantId)
+                TextField("Username, Email, or User ID", text: $newParticipantId)
                     .textInputAutocapitalization(.never)
                 
                 Button("Cancel", role: .cancel) {
                     newParticipantId = ""
+                    errorMessage = nil
                 }
                 
                 Button("Add") {
                     addParticipant()
                 }
+                .disabled(isSearching)
             } message: {
-                Text("Enter the user ID of the person you want to add")
+                Text("Search by username (e.g., @username), email, or user ID")
             }
             .onAppear {
                 loadGroupInfo()
@@ -166,22 +169,108 @@ struct GroupInfoView: View {
         guard !newParticipantId.isEmpty else { return }
         
         Task {
+            await MainActor.run {
+                isSearching = true
+                errorMessage = nil
+            }
+            
+            // Normalize search text
+            var searchQuery = newParticipantId.trimmingCharacters(in: .whitespaces)
+            
+            // Remove @ prefix if searching by username
+            if searchQuery.hasPrefix("@") {
+                searchQuery = String(searchQuery.dropFirst())
+            }
+            
+            var foundUser: User?
+            
+            // Try as username first (most common use case)
+            do {
+                if let user = try await UserService.shared.fetchUser(byUsername: searchQuery) {
+                    print("✅ Found user by username: \(user.displayName) (@\(user.username))")
+                    foundUser = user
+                }
+            } catch {
+                print("⚠️ Error searching by username: \(error.localizedDescription)")
+            }
+            
+            // Try as user ID if not found
+            if foundUser == nil {
+                do {
+                    let user = try await UserService.shared.fetchUser(byId: searchQuery)
+                    print("✅ Found user by ID: \(user.displayName)")
+                    foundUser = user
+                } catch {
+                    print("⚠️ Not found by ID: \(error.localizedDescription)")
+                }
+            }
+            
+            // Try as email if still not found
+            if foundUser == nil {
+                do {
+                    if let user = try await UserService.shared.fetchUser(byEmail: searchQuery) {
+                        print("✅ Found user by email: \(user.displayName)")
+                        foundUser = user
+                    }
+                } catch {
+                    print("⚠️ Error searching by email: \(error.localizedDescription)")
+                }
+            }
+            
+            await MainActor.run {
+                isSearching = false
+            }
+            
+            // Check if user was found
+            guard let user = foundUser else {
+                await MainActor.run {
+                    errorMessage = "User '\(searchQuery)' not found. Try searching by username (e.g., @username), email, or user ID"
+                    showAddParticipant = false
+                }
+                return
+            }
+            
+            // Check if adding self
+            if user.id == AuthenticationService.shared.currentUser?.id {
+                await MainActor.run {
+                    errorMessage = "You are already in this group"
+                    showAddParticipant = false
+                }
+                return
+            }
+            
+            // Check for duplicates
+            if participants.contains(where: { $0.id == user.id }) {
+                await MainActor.run {
+                    errorMessage = "\(user.displayName) is already in this group"
+                    showAddParticipant = false
+                }
+                return
+            }
+            
+            // Add participant to group
             do {
                 let currentUserId = AuthenticationService.shared.currentUser?.id ?? ""
                 
                 try await GroupService.shared.addParticipant(
                     groupId: groupId,
-                    userId: newParticipantId,
+                    userId: user.id,
                     requesterId: currentUserId
                 )
                 
                 print("✅ Participant added")
-                newParticipantId = ""
+                await MainActor.run {
+                    newParticipantId = ""
+                    errorMessage = nil
+                }
                 loadGroupInfo() // Reload
                 
             } catch {
                 print("❌ Error adding participant: \(error)")
-                errorMessage = "Failed to add participant: \(error.localizedDescription)"
+                await MainActor.run {
+                    errorMessage = "Failed to add participant: \(error.localizedDescription)"
+                    showAddParticipant = false
+                }
             }
         }
     }

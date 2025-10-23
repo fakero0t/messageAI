@@ -9,6 +9,12 @@ import Foundation
 import Combine
 import FirebaseFirestore
 
+// Notification for unread count changes
+extension Notification.Name {
+    static let unreadCountDidChange = Notification.Name("unreadCountDidChange")
+    static let conversationDidUpdate = Notification.Name("conversationDidUpdate")
+}
+
 struct ConversationWithDetails: Identifiable, Hashable {
     let conversation: ConversationEntity
     let participants: [User]
@@ -27,12 +33,11 @@ struct ConversationWithDetails: Identifiable, Hashable {
     
     var displayName: String {
         if conversation.isGroup {
-            // Show group name if available, otherwise participant names
+            // Show group name if available, otherwise "Group Chat"
             if let groupName = conversation.groupName, !groupName.isEmpty {
                 return groupName
             } else {
-                let names = participants.map { $0.displayName }
-                return names.isEmpty ? "Group Chat" : names.joined(separator: ", ")
+                return "Group Chat"
             }
         } else if isSelfChat {
             // Self-chat: show special label
@@ -83,6 +88,29 @@ class ConversationListViewModel: ObservableObject {
     
     init() {
         observeAuthAndBootstrap()
+        setupUnreadCountObserver()
+    }
+    
+    private func setupUnreadCountObserver() {
+        // Observe unread count changes from other view models
+        NotificationCenter.default.addObserver(
+            forName: .unreadCountDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            print("🔔 [ConversationListViewModel] Unread count changed notification received - reloading conversations")
+            self?.loadConversations()
+        }
+        
+        // Observe conversation updates (for immediate preview updates when sending messages)
+        NotificationCenter.default.addObserver(
+            forName: .conversationDidUpdate,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            print("🔔 [ConversationListViewModel] Conversation updated notification received - reloading conversations")
+            self?.loadConversations()
+        }
     }
     
     private func observeAuthAndBootstrap() {
@@ -212,10 +240,19 @@ class ConversationListViewModel: ObservableObject {
             print("⚠️ Conversation \(data["id"] as? String ?? "unknown") has pending timestamp")
         }
         
+        // Parse groupName - treat empty string as nil
+        let groupName: String?
+        if let name = data["groupName"] as? String, !name.isEmpty {
+            groupName = name
+        } else {
+            groupName = nil
+        }
+        
         return ConversationSnapshot(
             id: data["id"] as? String ?? "",
             participantIds: data["participants"] as? [String] ?? [],
             isGroup: data["isGroup"] as? Bool ?? false,
+            groupName: groupName,
             lastMessageText: data["lastMessageText"] as? String,
             lastMessageTime: lastMessageTime
         )
@@ -320,10 +357,14 @@ class ConversationListViewModel: ObservableObject {
             try await conversationService.syncConversationFromFirestore(snapshot)
             print("✅ [ConversationListViewModel] Conversation synced to local storage")
             
-            // Fetch recent messages for this conversation
-            // This ensures group messages appear even if user hasn't opened the chat yet
-            print("📥 [ConversationListViewModel] Fetching recent messages...")
-            await fetchRecentMessages(for: snapshot.id)
+            // ONLY fetch recent messages for NEW conversations
+            // For existing conversations, the message listener in ChatViewModel handles notifications
+            if !existsLocally {
+                print("📥 [ConversationListViewModel] NEW conversation - fetching recent messages...")
+                await fetchRecentMessages(for: snapshot.id)
+            } else {
+                print("ℹ️ [ConversationListViewModel] Existing conversation - skipping message fetch (ChatViewModel handles this)")
+            }
             
             // Reload conversations to update UI
             print("🔄 [ConversationListViewModel] Reloading conversations to update UI...")
@@ -356,19 +397,29 @@ class ConversationListViewModel: ObservableObject {
                 let data = document.data()
                 if let messageSnapshot = try? parseMessage(from: data) {
                     let messageAge = Date().timeIntervalSince(messageSnapshot.timestamp)
-                    print("   Message: \(messageSnapshot.text) (age: \(Int(messageAge))s)")
+                    print("   Message: \(messageSnapshot.text ?? "Image") (age: \(Int(messageAge))s)")
+                    
+                    // Check if message already exists locally
+                    let messageExistsLocally = await MainActor.run {
+                        (try? localStorage.messageExists(messageId: messageSnapshot.id)) ?? false
+                    }
                     
                     // Sync to local storage
                     try? await MessageService.shared.syncMessageFromFirestore(messageSnapshot)
                     
-                    // Trigger notification if message is from someone else and recent (last 10 seconds)
-                    if messageSnapshot.senderId != currentUserId {
+                    // ONLY trigger notification if:
+                    // 1. Message is from someone else
+                    // 2. Message is recent (last 10 seconds)
+                    // 3. Message didn't exist locally (it's new)
+                    if messageSnapshot.senderId != currentUserId && !messageExistsLocally {
                         if messageAge < 10 {
-                            print("🔔 [ConversationListViewModel] Message is recent (\(Int(messageAge))s old), triggering notification")
+                            print("🔔 [ConversationListViewModel] NEW recent message (\(Int(messageAge))s old), triggering notification")
                             await showNotificationForMessage(messageSnapshot, conversationId: conversationId)
                         } else {
                             print("ℹ️ [ConversationListViewModel] Message is old (\(Int(messageAge))s), skipping notification")
                         }
+                    } else if messageExistsLocally {
+                        print("ℹ️ [ConversationListViewModel] Message already exists locally, skipping notification")
                     }
                 }
             }
@@ -441,6 +492,10 @@ class ConversationListViewModel: ObservableObject {
                         print("❌ [ConversationListViewModel] Failed to increment unread count: \(error)")
                     }
                 }
+                
+                // Reload conversations to show updated unread count in UI
+                print("🔄 [ConversationListViewModel] Reloading conversations to display updated unread count")
+                loadConversations()
             } else {
                 print("ℹ️ [ConversationListViewModel] User IS viewing conversation - skipping unread count increment")
             }
