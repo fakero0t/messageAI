@@ -10,7 +10,8 @@ import SwiftUI
 struct SignupView: View {
     @ObservedObject var viewModel: AuthViewModel
     @Environment(\.dismiss) var dismiss
-    
+    @State private var showVoicePrompt = false
+
     var body: some View {
         NavigationView {
             VStack(spacing: 20) {
@@ -87,6 +88,7 @@ struct SignupView: View {
                     Task {
                         await viewModel.signup()
                         if viewModel.isAuthenticated {
+                            maybePromptForGeorgianVoice()
                             dismiss()
                         }
                     }
@@ -122,7 +124,25 @@ struct SignupView: View {
             }
             .padding(.top, 50)
             .navigationBarHidden(true)
+            .sheet(isPresented: $showVoicePrompt) {
+                GeorgianVoicePromptView(onDone: {
+                    UserDefaults.standard.set(true, forKey: "geoVoicePromptShown")
+                    showVoicePrompt = false
+                }, onSkip: {
+                    UserDefaults.standard.set(true, forKey: "geoVoicePromptShown")
+                    showVoicePrompt = false
+                })
+            }
         }
+    }
+
+    private func maybePromptForGeorgianVoice() {
+        // Only once
+        if UserDefaults.standard.bool(forKey: "geoVoicePromptShown") { return }
+        // If Georgian voice already present, skip
+        if TextToSpeechService().hasGeorgianVoice() { return }
+        // Show prompt
+        showVoicePrompt = true
     }
 }
 

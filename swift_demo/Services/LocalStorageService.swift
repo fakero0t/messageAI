@@ -21,8 +21,16 @@ class LocalStorageService {
     // MARK: - Message Operations
     
     func saveMessage(_ message: MessageEntity) throws {
+        print("💾 [LocalStorage] Saving message:")
+        print("   ID: \(message.id.prefix(8))")
+        print("   SenderId: '\(message.senderId)'")
+        print("   Text: \(message.text?.prefix(30) ?? "nil")")
+        print("   ImageUrl: \(message.imageUrl != nil ? "has image" : "no image")")
+        
         modelContext.insert(message)
         try modelContext.save()
+        
+        print("✅ [LocalStorage] Message saved successfully")
     }
     
     func fetchMessages(for conversationId: String) throws -> [MessageEntity] {
@@ -31,7 +39,15 @@ class LocalStorageService {
             predicate: predicate,
             sortBy: [SortDescriptor(\.timestamp, order: .forward)]
         )
-        return try modelContext.fetch(descriptor)
+        let messages = try modelContext.fetch(descriptor)
+        
+        print("📥 [LocalStorage] Fetched \(messages.count) messages for conversation \(conversationId.prefix(8))")
+        for msg in messages {
+            let preview = msg.text?.prefix(20) ?? (msg.imageUrl != nil ? "Image" : "Empty")
+            print("   \(msg.id.prefix(8)): senderId='\(msg.senderId)' | \(preview)")
+        }
+        
+        return messages
     }
     
     func updateMessageStatus(messageId: String, status: MessageStatus) throws {
@@ -93,6 +109,28 @@ class LocalStorageService {
         if let message = try modelContext.fetch(descriptor).first {
             modelContext.delete(message)
             try modelContext.save()
+        }
+    }
+    
+    // Update message with translation data
+    func updateMessageTranslation(
+        messageId: String,
+        translatedEn: String,
+        translatedKa: String,
+        originalLang: String
+    ) throws {
+        let predicate = #Predicate<MessageEntity> { $0.id == messageId }
+        let descriptor = FetchDescriptor<MessageEntity>(predicate: predicate)
+        
+        if let message = try modelContext.fetch(descriptor).first {
+            message.translatedEn = translatedEn
+            message.translatedKa = translatedKa
+            message.originalLang = originalLang
+            message.translatedAt = Date()
+            try modelContext.save()
+            print("💾 [LocalStorage] Updated message translation for: \(messageId.prefix(8))")
+        } else {
+            print("⚠️ [LocalStorage] Message not found for translation update: \(messageId.prefix(8))")
         }
     }
     

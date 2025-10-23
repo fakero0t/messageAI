@@ -1,0 +1,360 @@
+{
+  "მადლობა": [
+    {
+      "word": "არაპრის",
+      "gloss": "you're welcome",
+      "formality": "neutral"
+    },
+    {
+      "word": "გმადლობთ",
+      "gloss": "thank you (formal)",
+      "formality": "formal"
+    },
+    {
+      "word": "დიდი მადლობა",
+      "gloss": "thank you very much",
+      "formality": "neutral"
+    }
+  ],
+  "გამარჯობა": [
+    {
+      "word": "გაგიმარჯოს",
+      "gloss": "hello (formal)",
+      "formality": "formal"
+    },
+    {
+      "word": "სალამი",
+      "gloss": "hi, greetings",
+      "formality": "informal"
+    },
+    {
+      "word": "მოგესალმები",
+      "gloss": "I greet you",
+      "formality": "formal"
+    }
+  ],
+  "როგორ": [
+    {
+      "word": "როგორც",
+      "gloss": "as, like",
+      "formality": "neutral"
+    },
+    {
+      "word": "რატომ",
+      "gloss": "why",
+      "formality": "neutral"
+    },
+    {
+      "word": "რა",
+      "gloss": "what",
+      "formality": "neutral"
+    }
+  ],
+  "კარგი": [
+    {
+      "word": "მშვენიერი",
+      "gloss": "wonderful, excellent",
+      "formality": "neutral"
+    },
+    {
+      "word": "საუკეთესო",
+      "gloss": "the best",
+      "formality": "neutral"
+    },
+    {
+      "word": "ბრწყინვალე",
+      "gloss": "brilliant",
+      "formality": "neutral"
+    }
+  ],
+  "ცუდი": [
+    {
+      "word": "უარესი",
+      "gloss": "worse",
+      "formality": "neutral"
+    },
+    {
+      "word": "საშინელი",
+      "gloss": "terrible",
+      "formality": "neutral"
+    },
+    {
+      "word": "უხერხული",
+      "gloss": "awkward, uncomfortable",
+      "formality": "neutral"
+    }
+  ],
+  "სახლი": [
+    {
+      "word": "ბინა",
+      "gloss": "apartment",
+      "formality": "neutral"
+    },
+    {
+      "word": "საცხოვრებელი",
+      "gloss": "dwelling, residence",
+      "formality": "formal"
+    },
+    {
+      "word": "კოტეჯი",
+      "gloss": "cottage",
+      "formality": "neutral"
+    }
+  ],
+  "საქართველო": [
+    {
+      "word": "თბილისი",
+      "gloss": "Tbilisi (capital)",
+      "formality": "neutral"
+    },
+    {
+      "word": "ქართული",
+      "gloss": "Georgian (adjective)",
+      "formality": "neutral"
+    },
+    {
+      "word": "ქართველი",
+      "gloss": "Georgian (person)",
+      "formality": "neutral"
+    }
+  ],
+  "ენა": [
+    {
+      "word": "ლექსიკა",
+      "gloss": "vocabulary",
+      "formality": "formal"
+    },
+    {
+      "word": "გრამატიკა",
+      "gloss": "grammar",
+      "formality": "formal"
+    },
+    {
+      "word": "სიტყვა",
+      "gloss": "word",
+      "formality": "neutral"
+    }
+  ],
+  "მე": [
+    {
+      "word": "შენ",
+      "gloss": "you (informal)",
+      "formality": "informal"
+    },
+    {
+      "word": "ის",
+      "gloss": "he/she/it",
+      "formality": "neutral"
+    },
+    {
+      "word": "ჩვენ",
+      "gloss": "we",
+      "formality": "neutral"
+    }
+  ],
+  "მიყვარს": [
+    {
+      "word": "მომწონს",
+      "gloss": "I like",
+      "formality": "neutral"
+    },
+    {
+      "word": "მიხარია",
+      "gloss": "I'm glad",
+      "formality": "neutral"
+    },
+    {
+      "word": "ვაფასებ",
+      "gloss": "I appreciate",
+      "formality": "neutral"
+    }
+  ],
+  "დიახ": [
+    {
+      "word": "ჰო",
+      "gloss": "yes (informal)",
+      "formality": "informal"
+    },
+    {
+      "word": "რა თქმა უნდა",
+      "gloss": "of course",
+      "formality": "neutral"
+    },
+    {
+      "word": "ბატონო",
+      "gloss": "yes sir",
+      "formality": "formal"
+    }
+  ],
+  "არა": [
+    {
+      "word": "არავითარ შემთხვევაში",
+      "gloss": "no way, by no means",
+      "formality": "neutral"
+    },
+    {
+      "word": "კი არა",
+      "gloss": "not really",
+      "formality": "neutral"
+    },
+    {
+      "word": "უარი",
+      "gloss": "refusal, no",
+      "formality": "formal"
+    }
+  ],
+  "ხარ": [
+    {
+      "word": "ხართ",
+      "gloss": "you are (formal/plural)",
+      "formality": "formal"
+    },
+    {
+      "word": "არის",
+      "gloss": "is",
+      "formality": "neutral"
+    },
+    {
+      "word": "ვარ",
+      "gloss": "I am",
+      "formality": "neutral"
+    }
+  ],
+  "და": [
+    {
+      "word": "ან",
+      "gloss": "or",
+      "formality": "neutral"
+    },
+    {
+      "word": "მაგრამ",
+      "gloss": "but",
+      "formality": "neutral"
+    },
+    {
+      "word": "თუმცა",
+      "gloss": "however",
+      "formality": "neutral"
+    }
+  ],
+  "რა": [
+    {
+      "word": "რომელი",
+      "gloss": "which",
+      "formality": "neutral"
+    },
+    {
+      "word": "როგორი",
+      "gloss": "what kind",
+      "formality": "neutral"
+    },
+    {
+      "word": "რატომ",
+      "gloss": "why",
+      "formality": "neutral"
+    }
+  ],
+  "დღეს": [
+    {
+      "word": "ხვალ",
+      "gloss": "tomorrow",
+      "formality": "neutral"
+    },
+    {
+      "word": "გუშინ",
+      "gloss": "yesterday",
+      "formality": "neutral"
+    },
+    {
+      "word": "ახლა",
+      "gloss": "now",
+      "formality": "neutral"
+    }
+  ],
+  "ახლა": [
+    {
+      "word": "მაშინ",
+      "gloss": "then",
+      "formality": "neutral"
+    },
+    {
+      "word": "შემდეგ",
+      "gloss": "later, afterwards",
+      "formality": "neutral"
+    },
+    {
+      "word": "ადრე",
+      "gloss": "before, earlier",
+      "formality": "neutral"
+    }
+  ],
+  "ძალიან": [
+    {
+      "word": "ძლიერ",
+      "gloss": "very much, strongly",
+      "formality": "neutral"
+    },
+    {
+      "word": "საკმაოდ",
+      "gloss": "quite, rather",
+      "formality": "neutral"
+    },
+    {
+      "word": "განსაკუთრებით",
+      "gloss": "especially",
+      "formality": "formal"
+    }
+  ],
+  "ბოდიში": [
+    {
+      "word": "უკაცრავად",
+      "gloss": "excuse me, sorry",
+      "formality": "neutral"
+    },
+    {
+      "word": "ვწუხვარ",
+      "gloss": "I'm sorry (regret)",
+      "formality": "neutral"
+    },
+    {
+      "word": "მაპატიე",
+      "gloss": "forgive me",
+      "formality": "informal"
+    }
+  ],
+  "კაი": [
+    {
+      "word": "მაგარი",
+      "gloss": "cool, awesome",
+      "formality": "informal"
+    },
+    {
+      "word": "კარგი",
+      "gloss": "good",
+      "formality": "neutral"
+    },
+    {
+      "word": "ნორმალური",
+      "gloss": "normal, okay",
+      "formality": "informal"
+    }
+  ],
+  "ვიცი": [
+    {
+      "word": "ვიცით",
+      "gloss": "we know",
+      "formality": "neutral"
+    },
+    {
+      "word": "მესმის",
+      "gloss": "I understand",
+      "formality": "neutral"
+    },
+    {
+      "word": "გავიგე",
+      "gloss": "I found out",
+      "formality": "neutral"
+    }
+  ]
+}
+

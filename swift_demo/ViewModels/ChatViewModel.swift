@@ -43,6 +43,7 @@ class ChatViewModel: ObservableObject {
     private let notificationService = NotificationService.shared
     private let typingService = TypingService.shared // PR-3
     private let imageUploadService = ImageUploadService.shared // PR-9
+    private let wordUsageTrackingService = WordUsageTrackingService.shared // PR-1 (Geo Suggestions)
     private var typingDebounceTimer: Timer? // PR-3
     private var cancellables = Set<AnyCancellable>()
     
@@ -52,14 +53,23 @@ class ChatViewModel: ObservableObject {
     init(recipientId: String, conversationId: String? = nil) {
         print("🚀 [ChatViewModel] Initializing with recipientId: \(recipientId)")
         self.recipientId = recipientId
-        self.currentUserId = AuthenticationService.shared.currentUser?.id ?? ""
+        
+        // Capture currentUserId immediately (before it can change)
+        guard let authenticatedUserId = AuthenticationService.shared.currentUser?.id, !authenticatedUserId.isEmpty else {
+            print("❌ [ChatViewModel] CRITICAL: Cannot initialize ChatViewModel - user is not authenticated!")
+            print("❌ [ChatViewModel] AuthenticationService.shared.currentUser: \(String(describing: AuthenticationService.shared.currentUser))")
+            fatalError("ChatViewModel requires authenticated user")
+        }
+        
+        self.currentUserId = authenticatedUserId
+        print("✅ [ChatViewModel] Current User ID captured: \(self.currentUserId)")
         
         // Use provided conversationId (for groups) or generate it (for one-on-one)
         if let conversationId = conversationId {
             self.conversationId = conversationId
         } else {
             self.conversationId = ConversationService.shared.generateConversationId(
-                userId1: currentUserId,
+                userId1: self.currentUserId,
                 userId2: recipientId
             )
         }
@@ -186,6 +196,11 @@ class ChatViewModel: ObservableObject {
         stopTypingIndicator()
         print("🛑 [Typing] Stopped typing indicator on send")
         
+        // PR-1 (Geo Suggestions): Track Georgian word usage
+        Task { @MainActor in
+            wordUsageTrackingService.trackMessage(text)
+        }
+        
         let messageId = UUID().uuidString
         print("📤 [ChatViewModel] Generated message ID: \(messageId)")
         
@@ -202,6 +217,11 @@ class ChatViewModel: ObservableObject {
             timestamp: Date(),
             status: initialStatus
         )
+        
+        print("📤 [ChatViewModel] Created optimistic text message:")
+        print("   MessageId: \(messageId)")
+        print("   SenderId: '\(currentUserId)'")
+        print("   Text: '\(text.prefix(30))'")
         
         messages.append(optimisticMessage)
         print("📤 [ChatViewModel] Message appended to local array, total messages: \(messages.count)")
@@ -250,15 +270,29 @@ class ChatViewModel: ObservableObject {
                     conversationId: conversationId,
                     timestampMs: tsMs
                 ) { result in
-                    // For PR04 we do not update UI; caching happens server-side/on-demand later
                     if let result = result {
-                        // Immediately store into local cache so UI double-tap becomes instant
+                        // Store into local cache for instant UI access
                         TranslationCacheService.shared.store(
                             sourceText: text,
                             english: result.translations.en,
                             georgian: result.translations.ka,
                             confidence: 1.0
                         )
+                        
+                        // Save translation to local storage
+                        Task { @MainActor in
+                            do {
+                                try await self.localStorage.updateMessageTranslation(
+                                    messageId: messageId,
+                                    translatedEn: result.translations.en,
+                                    translatedKa: result.translations.ka,
+                                    originalLang: GeorgianScriptDetector.containsGeorgian(text) ? "ka" : "en"
+                                )
+                                print("💾 [ChatViewModel] Saved translation for sent message")
+                            } catch {
+                                print("⚠️ [ChatViewModel] Failed to save translation: \(error)")
+                            }
+                        }
                     }
                 }
                 
@@ -332,6 +366,10 @@ class ChatViewModel: ObservableObject {
                 print("📸 Network connected: \(networkMonitor.isConnected), status: \(initialStatus)")
                 
                 // 3. Create optimistic message (shows immediately with local path)
+                print("📸 [ChatViewModel] Created optimistic image message:")
+                print("   MessageId: \(messageId)")
+                print("   SenderId: '\(currentUserId)'")
+                
                 let optimisticMessage = MessageEntity(
                     id: messageId,
                     conversationId: conversationId,
@@ -570,6 +608,12 @@ class ChatViewModel: ObservableObject {
             messages = fetchedMessages.map { $0 } // Force new array to trigger SwiftUI update
             print("📨 Loaded \(messages.count) messages from local storage")
             
+            // Debug: Log sender IDs for all messages
+            for msg in messages {
+                let preview = msg.text?.prefix(30) ?? (msg.imageUrl != nil ? "Image" : "Empty")
+                print("   Message \(msg.id.prefix(8)): senderId='\(msg.senderId)' | text/type: \(preview)")
+            }
+            
             // If local has messages but we suspect they're stale, the Firestore listener will sync them
             // For fresh installs, ConversationListViewModel already fetches messages
             
@@ -617,6 +661,42 @@ class ChatViewModel: ObservableObject {
                 do {
                     print("💾 [ChatViewModel] Syncing message to local storage...")
                     try await self.messageService.syncMessageFromFirestore(snapshot)
+                    
+                    // Automatically translate received message
+                    if let text = snapshot.text, !text.isEmpty {
+                        let tsMs = Int64(Date().timeIntervalSince1970 * 1000)
+                        TranslationTransport.shared.requestTranslation(
+                            messageId: snapshot.id,
+                            text: text,
+                            conversationId: snapshot.conversationId,
+                            timestampMs: tsMs
+                        ) { result in
+                            if let result = result {
+                                // Store into local cache
+                                TranslationCacheService.shared.store(
+                                    sourceText: text,
+                                    english: result.translations.en,
+                                    georgian: result.translations.ka,
+                                    confidence: 1.0
+                                )
+                                
+                                // Save translation to local storage
+                                Task { @MainActor in
+                                    do {
+                                        try await self.localStorage.updateMessageTranslation(
+                                            messageId: snapshot.id,
+                                            translatedEn: result.translations.en,
+                                            translatedKa: result.translations.ka,
+                                            originalLang: GeorgianScriptDetector.containsGeorgian(text) ? "ka" : "en"
+                                        )
+                                        print("💾 [ChatViewModel] Saved translation for received message")
+                                    } catch {
+                                        print("⚠️ [ChatViewModel] Failed to save translation: \(error)")
+                                    }
+                                }
+                            }
+                        }
+                    }
                     
                     await MainActor.run {
                         print("🔄 [ChatViewModel] Triggering UI update...")

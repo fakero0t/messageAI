@@ -7,6 +7,7 @@
 
 import SwiftUI
 
+@MainActor
 struct ChatView: View {
     let recipientId: String
     let recipientName: String
@@ -16,6 +17,8 @@ struct ChatView: View {
     @EnvironmentObject private var notificationService: NotificationService
     @State private var messageText = ""
     @State private var showGroupInfo = false // Added for PR-17
+    @State private var undoText: String? // PR-4: Geo Suggestions undo state
+    @State private var hasSuggestions = false // PR-4: Track if suggestions are showing
     @FocusState private var isInputFocused: Bool
     @Environment(\.scenePhase) private var scenePhase
     
@@ -72,13 +75,22 @@ struct ChatView: View {
                 
                 Divider()
                 
+                // PR-4: Georgian word suggestions bar
+                // In Vue: <GeoSuggestionBar v-model:text="messageText" v-model:undo="undoText" @textChange="handleTextChange" />
+                GeoSuggestionBar(
+                    messageText: $messageText,
+                    undoText: $undoText,
+                    hasSuggestions: $hasSuggestions,
+                    onTextChange: handleTextChange
+                )
+                
                 // In Vue: <MessageInput v-model:text="messageText" v-model:focused="isInputFocused" @send="sendMessage" @sendImage="sendImage" @textChange="viewModel.handleTextFieldChange" />
                 MessageInputView(
                     text: $messageText,
                     onSend: sendMessage,
                     onSendImage: sendImage, // PR-9
-                    onTextChange: viewModel.handleTextFieldChange, // PR-3
-                    isFocused: $isInputFocused
+                    onTextChange: handleTextChange, // PR-3 + PR-4
+                    disableSend: hasSuggestions, isFocused: $isInputFocused // PR-4: Disable send while suggestions active
                 )
             }
         }
@@ -136,6 +148,7 @@ struct ChatView: View {
         guard !messageText.isEmpty else { return }
         viewModel.sendMessage(text: messageText)
         messageText = ""
+        undoText = nil // Clear undo state on send
     }
     
     // PR-9: Send image message
@@ -143,12 +156,22 @@ struct ChatView: View {
         print("📸 [ChatView] sendImage called")
         viewModel.sendImage(image)
     }
+    
+    // PR-4: Handle text changes for both typing indicator and suggestions
+    private func handleTextChange(_ newText: String) {
+        // Update typing indicator (PR-3)
+        viewModel.handleTextFieldChange(text: newText)
+        
+        // Note: GeoSuggestionBar handles its own suggestion triggering
+        // via checkForSuggestions() called on text changes
+    }
 }
 
 // MARK: - PR-3: Chat Header with Typing Indicator
 
 /// Custom chat header that shows typing indicator or online status
 /// In Vue: const ChatHeader = defineComponent({ props: ['recipientName', 'typingText', 'isOnline'] })
+@MainActor
 struct ChatHeaderView: View {
     @ObservedObject var viewModel: ChatViewModel
     let recipientName: String
@@ -156,12 +179,10 @@ struct ChatHeaderView: View {
     
     @State private var recipientUser: User?
     
-    // Computed property to check if this is a self-chat
-    private var isSelfChat: Bool {
-        viewModel.recipientId == viewModel.currentUserId
-    }
-    
     var body: some View {
+        // Computed property to check if this is a self-chat
+        let isSelfChat = viewModel.recipientId == viewModel.currentUserId
+        
         HStack(spacing: 8) {
             if viewModel.isGroup {
                 // PR-16: Group - Show name and typing indicator (tappable to show group info)

@@ -341,4 +341,223 @@ exports.onMessageCreate = functions.firestore
     }
   });
 
+// --- PR-3: Georgian Vocabulary Suggestions (OpenAI Embeddings) ---
+
+// Cache helpers for suggestions
+function suggestionHash(word) {
+  const crypto = require('crypto');
+  return crypto.createHash('md5').update(word.trim().toLowerCase()).digest('hex');
+}
+
+async function checkSuggestionCache(baseWord) {
+  const hash = suggestionHash(baseWord);
+  const doc = await db.collection('suggestionCache').doc(hash).get();
+  if (!doc.exists) return null;
+  const data = doc.data();
+  
+  // Check TTL (7 days)
+  const ttlMs = 7 * 24 * 60 * 60 * 1000;
+  const age = Date.now() - (data.timestamp || 0);
+  if (age > ttlMs) return null;
+  
+  // Update hit count
+  await doc.ref.update({
+    hitCount: admin.firestore.FieldValue.increment(1),
+    lastUsed: admin.firestore.FieldValue.serverTimestamp()
+  });
+  
+  return data;
+}
+
+async function storeSuggestionCache(baseWord, suggestions, ttl = 7 * 24 * 60 * 60 * 1000) {
+  const hash = suggestionHash(baseWord);
+  const ref = db.collection('suggestionCache').doc(hash);
+  await ref.set({
+    baseWord,
+    suggestions,
+    timestamp: Date.now(),
+    ttl,
+    hitCount: 0,
+    lastUsed: admin.firestore.FieldValue.serverTimestamp()
+  }, { merge: true });
+}
+
+// Offensive/archaic filter list
+const filteredGeorgianWords = new Set([
+  // Placeholder - would be populated from config
+]);
+
+// Get embedding from OpenAI
+async function getEmbedding(text, apiKey) {
+  const resp = await fetch('https://api.openai.com/v1/embeddings', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      model: 'text-embedding-3-small',
+      input: text
+    })
+  });
+  
+  if (!resp.ok) {
+    const errText = await resp.text().catch(() => '');
+    throw new Error(`OpenAI embeddings error ${resp.status}: ${errText}`);
+  }
+  
+  const data = await resp.json();
+  return data.data?.[0]?.embedding || null;
+}
+
+// Compute cosine similarity
+function cosineSimilarity(a, b) {
+  let dotProduct = 0;
+  let normA = 0;
+  let normB = 0;
+  
+  for (let i = 0; i < a.length; i++) {
+    dotProduct += a[i] * b[i];
+    normA += a[i] * a[i];
+    normB += b[i] * b[i];
+  }
+  
+  return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
+}
+
+// Simple Georgian word bank for semantic search (would be expanded)
+const georgianWordBank = [
+  { word: 'არაპრის', gloss: "you're welcome", formality: 'neutral' },
+  { word: 'გმადლობთ', gloss: 'thank you (formal)', formality: 'formal' },
+  { word: 'გაგიმარჯოს', gloss: 'hello (formal)', formality: 'formal' },
+  { word: 'სალამი', gloss: 'hi, greetings', formality: 'informal' },
+  { word: 'მშვენიერი', gloss: 'wonderful', formality: 'neutral' },
+  { word: 'საუკეთესო', gloss: 'the best', formality: 'neutral' },
+  { word: 'ბრწყინვალე', gloss: 'brilliant', formality: 'neutral' },
+  { word: 'ძლიერ', gloss: 'very much', formality: 'neutral' },
+  { word: 'საკმაოდ', gloss: 'quite', formality: 'neutral' },
+  { word: 'მაგარი', gloss: 'cool, awesome', formality: 'informal' },
+  { word: 'ნორმალური', gloss: 'normal, okay', formality: 'informal' },
+  { word: 'მომწონს', gloss: 'I like', formality: 'neutral' },
+  { word: 'მიხარია', gloss: "I'm glad", formality: 'neutral' },
+  { word: 'ვაფასებ', gloss: 'I appreciate', formality: 'neutral' },
+  { word: 'უკაცრავად', gloss: 'excuse me', formality: 'neutral' },
+  { word: 'მაპატიე', gloss: 'forgive me', formality: 'informal' },
+  { word: 'რომელი', gloss: 'which', formality: 'neutral' },
+  { word: 'როგორი', gloss: 'what kind', formality: 'neutral' },
+  { word: 'ხვალ', gloss: 'tomorrow', formality: 'neutral' },
+  { word: 'გუშინ', gloss: 'yesterday', formality: 'neutral' }
+];
+
+exports.suggestRelatedWords = functions
+  .runWith({ timeoutSeconds: 30, memory: '512MB' })
+  .https.onCall(async (data, context) => {
+    try {
+      // Auth check
+      if (!context.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'Must be authenticated');
+      }
+      
+      const { base, locale } = data;
+      
+      // Validation
+      if (!base || typeof base !== 'string') {
+        throw new functions.https.HttpsError('invalid-argument', 'base word required');
+      }
+      
+      if (locale && locale !== 'ka-GE') {
+        throw new functions.https.HttpsError('invalid-argument', 'only ka-GE locale supported');
+      }
+      
+      // Rate limiting check (simple per-user throttle)
+      const userId = context.auth.uid;
+      const rateLimitKey = `suggestion_rate_${userId}`;
+      const rateLimitDoc = await db.collection('rateLimits').doc(rateLimitKey).get();
+      
+      if (rateLimitDoc.exists) {
+        const data = rateLimitDoc.data();
+        const now = Date.now();
+        const windowMs = 60 * 1000; // 1 minute
+        const maxRequests = 10;
+        
+        if (now - data.windowStart < windowMs && data.count >= maxRequests) {
+          throw new functions.https.HttpsError('resource-exhausted', 'Rate limit exceeded');
+        }
+        
+        if (now - data.windowStart >= windowMs) {
+          // Reset window
+          await db.collection('rateLimits').doc(rateLimitKey).set({
+            windowStart: now,
+            count: 1
+          });
+        } else {
+          // Increment
+          await db.collection('rateLimits').doc(rateLimitKey).update({
+            count: admin.firestore.FieldValue.increment(1)
+          });
+        }
+      } else {
+        // First request
+        await db.collection('rateLimits').doc(rateLimitKey).set({
+          windowStart: Date.now(),
+          count: 1
+        });
+      }
+      
+      // Check cache
+      const cached = await checkSuggestionCache(base);
+      if (cached?.suggestions) {
+        console.log(JSON.stringify({ event: 'suggestion_cache_hit', base }));
+        return {
+          base,
+          suggestions: cached.suggestions,
+          ttl: cached.ttl
+        };
+      }
+      
+      // Get OpenAI key
+      const apiKey = getOpenAIKey();
+      if (!apiKey) {
+        throw new functions.https.HttpsError('failed-precondition', 'OpenAI API key not configured');
+      }
+      
+      const start = Date.now();
+      
+      // Get embedding for base word
+      const baseEmbedding = await getEmbedding(base, apiKey);
+      if (!baseEmbedding) {
+        throw new functions.https.HttpsError('internal', 'Failed to get embedding');
+      }
+      
+      // Get embeddings for word bank (in production, these would be pre-computed)
+      // For now, we'll use a simpler heuristic or return curated matches
+      // In a full implementation, you'd have a vector DB like Pinecone
+      
+      // Simple fallback: return filtered word bank samples
+      const suggestions = georgianWordBank
+        .filter(item => item.word !== base.toLowerCase())
+        .filter(item => !filteredGeorgianWords.has(item.word))
+        .slice(0, 3);
+      
+      const latencyMs = Date.now() - start;
+      console.log(JSON.stringify({ event: 'suggestion_generated', base, latencyMs }));
+      
+      // Cache result
+      await storeSuggestionCache(base, suggestions);
+      
+      return {
+        base,
+        suggestions,
+        ttl: 7 * 24 * 60 * 60 * 1000
+      };
+      
+    } catch (e) {
+      console.error('suggestRelatedWords error:', e);
+      if (e instanceof functions.https.HttpsError) {
+        throw e;
+      }
+      throw new functions.https.HttpsError('internal', e.message || 'Unknown error');
+    }
+  });
+
 

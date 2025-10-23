@@ -67,24 +67,29 @@ struct MessageBubbleView: View {
                             .background(bubbleColor)
                             .foregroundColor(textColor)
                             .cornerRadius(16)
+                            .onTapGesture(count: 2) {
+                                handleDoubleTap()
+                            }
                         } else {
-                            Text(text)
+                            let bubble = Text(text)
                                 .padding(12)
                                 .background(bubbleColor)
                                 .foregroundColor(textColor)
                                 .cornerRadius(16)
-                        }
-                    }
-                    .onTapGesture(count: 2) {
-                        handleDoubleTap()
-                    }
-                    .contextMenu {
-                        Button("Show Translation") { handleDoubleTap() }
-                        if let text = message.text {
-                            Button("Explain Slang/Idioms") { runNL(intent: "explain_slang", text: text) }
-                            Button("Adjust Tone → Formal") { runNL(intent: "adjust_tone_formal", text: text) }
-                            Button("Adjust Tone → Casual") { runNL(intent: "adjust_tone_casual", text: text) }
-                            Button("Cultural Context Hint") { runNL(intent: "cultural_hint", text: text) }
+                                .onTapGesture(count: 2) {
+                                    handleDoubleTap()
+                                }
+
+                            if GeorgianScriptDetector.containsGeorgian(text) {
+                                GeorgianMagnifierOverlay(
+                                    text: text,
+                                    alignment: isFromCurrentUser ? .topTrailing : .topLeading
+                                ) {
+                                    bubble
+                                }
+                            } else {
+                                bubble
+                            }
                         }
                     }
                 }
@@ -123,6 +128,15 @@ struct MessageBubbleView: View {
             set: { nlSheetText = $0?.text }
         )) { payload in
             ScrollView { Text(payload.text).padding() }
+        }
+        .onAppear {
+            // Load existing translations from message entity
+            if let en = message.translatedEn, !en.isEmpty {
+                translatedEN = en
+            }
+            if let ka = message.translatedKa, !ka.isEmpty {
+                translatedKA = ka
+            }
         }
     }
     
@@ -176,7 +190,6 @@ struct MessageBubbleView: View {
 
     private func handleDoubleTap() {
         print("👆 [MessageBubble] Double-tap on message: \(message.id)")
-        print("🔧 [MessageBubble] aiTranslationEnabled=true (forced)")
         guard let text = message.text else {
             print("⚠️ [MessageBubble] Guard failed: no text")
             return
@@ -189,11 +202,25 @@ struct MessageBubbleView: View {
             return
         }
         
-        // Try local cache first
+        // Try loading from message entity first
+        if let storedEN = message.translatedEn, !storedEN.isEmpty,
+           let storedKA = message.translatedKa, !storedKA.isEmpty {
+            print("💾 [MessageBubble] Loaded both translations from message entity")
+            translatedEN = storedEN
+            translatedKA = storedKA
+            withAnimation(.spring(response: 0.3)) { isExpanded = true }
+            return
+        }
+        
+        // Try local cache
         if let cached = TranslationCacheService.shared.get(text: text) {
             print("💾 [MessageBubble] Cache hit for text hash")
             translatedEN = cached.translations.en
             translatedKA = cached.translations.ka
+            
+            // Save to local storage
+            saveTranslationToStorage(en: cached.translations.en, ka: cached.translations.ka)
+            
             withAnimation(.spring(response: 0.3)) {
                 isExpanded = true
             }
@@ -205,6 +232,7 @@ struct MessageBubbleView: View {
         translatedEN = ""
         translatedKA = ""
         withAnimation(.spring(response: 0.3)) { isExpanded = true }
+        
         let tsMs = Int64(Date().timeIntervalSince1970 * 1000)
         TranslationTransport.shared.requestTranslation(
             messageId: message.id,
@@ -213,13 +241,34 @@ struct MessageBubbleView: View {
             timestampMs: tsMs
         ) { result in
             print("📨 [MessageBubble] SSE completion for message \(message.id) result=\(result != nil)")
-            DispatchQueue.main.async {
+            Task { @MainActor in
                 guard let result = result else { return }
+                
                 self.translatedEN = result.translations.en
                 self.translatedKA = result.translations.ka
+                
+                // Save to local storage
+                self.saveTranslationToStorage(en: result.translations.en, ka: result.translations.ka)
+                
                 withAnimation(.spring(response: 0.3)) {
                     self.isExpanded = true
                 }
+            }
+        }
+    }
+    
+    private func saveTranslationToStorage(en: String, ka: String) {
+        Task { @MainActor in
+            do {
+                try await LocalStorageService.shared.updateMessageTranslation(
+                    messageId: message.id,
+                    translatedEn: en,
+                    translatedKa: ka,
+                    originalLang: GeorgianScriptDetector.containsGeorgian(message.text ?? "") ? "ka" : "en"
+                )
+                print("💾 [MessageBubble] Saved translation to local storage")
+            } catch {
+                print("⚠️ [MessageBubble] Failed to save translation: \(error)")
             }
         }
     }

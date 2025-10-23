@@ -123,6 +123,7 @@ class MessageService {
         print("   Text: \(snapshot.text ?? "nil")")
         print("   Image URL: \(snapshot.imageUrl ?? "nil")")
         print("   Conversation: \(snapshot.conversationId)")
+        print("   SenderId from Firestore: '\(snapshot.senderId)'")
         
         try await MainActor.run {
             do {

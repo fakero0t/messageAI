@@ -1,0 +1,136 @@
+# Dictation AI: Georgian Letter Magnifier + TTS (PRD)
+
+### Overview
+
+- **Goal**: When a user long‑presses and slides over Georgian text in a message, show a magnified letter under the finger and read that Georgian letter aloud.
+- **Scope**: In-message text only. Triggered only when the message contains Georgian script.
+- **Out of scope**: Non-Georgian scripts magnification, full‑word TTS, transcription, recording.
+
+### User Story & Flow
+
+1. User long‑presses on a message bubble containing Georgian text.
+2. A lens appears near the finger showing the current Georgian letter enlarged.
+3. As the finger slides across letters (including across wrapped lines), the lens updates, and that letter is spoken.
+4. Releasing the finger hides the lens and stops speech.
+
+### Functional Requirements
+
+- **Script gating**
+- Detect Georgian script at the message level prior to enabling the gesture.
+- Unicode ranges treated as Georgian: U+10A0..U+10FF, U+2D00..U+2D2F, U+1C90..U+1CBF.
+- **Gesture model**
+- Long‑press (>150–250 ms) to activate; drag to move; cancel on lift/interrupt.
+- Do not interfere with existing tap/double‑tap/long‑press menus; only attach to Georgian messages.
+- **Magnifier lens**
+- Circular lens (~44–56pt diameter) positioned above the finger with slight offset; follows finger.
+- Displays the currently targeted letter centered at large size.
+- Optional light haptic on letter change.
+- **Hit‑testing letters**
+- Map the finger point to a character index in the laid‑out text, supporting multi‑line wrapping.
+- iOS 17+: Prefer SwiftUI Text layout APIs to resolve glyph hit‑tests.
+- Fallback: Wrap a `UITextView` via `UIViewRepresentable` to use TextKit’s layout manager for `characterIndex(for:in:)`.
+- Handle extended grapheme clusters (combined marks) as a single speakable unit.
+- **TTS behavior**
+- Engine: `AVSpeechSynthesizer` with `AVSpeechSynthesisVoice(language: "ka-GE")`; fallback to default system voice if unavailable.
+- Speak only when a new Georgian character index is targeted; debounce ~80–120 ms to avoid chattering.
+- Cancel the prior utterance before speaking the next; stop on gesture end.
+- Respect accessibility: if VoiceOver is active, disable custom TTS to avoid double output.
+- Audio session: short utterances, mix with others; respect device silent mode unless product decides otherwise (configurable).
+
+### Non‑Functional Requirements
+
+- **Performance**: No noticeable scroll or interaction jank; layout precomputation per message where possible.
+- **Offline**: Works without network; voices may need on‑device download (handle gracefully).
+- **Privacy**: No text leaves device.
+- **Reliability**: Degrade to lens‑only if Georgian voice unavailable or audio route fails.
+
+### Quality Targets & SLAs
+
+- **Interaction success**: 90%+ of scrubs over Georgian letters produce the correct magnified glyph and a spoken output on first try across top devices (iPhone 12+).
+- **Latency**:
+- Lens visual update: <16 ms from finger movement (1 frame at 60 Hz).
+- TTS start (time to first phoneme): <300 ms after letter change; worst‑case <700 ms.
+- Any blocking initialization (e.g., first synthesizer warm‑up) completes with visible loading affordance; user‑perceived wait <2 s.
+- **UI integration**: No regression to existing tap/long‑press menus; overlay does not obstruct copy/translate menus.
+- **Error handling**: Clear, unobtrusive toasts/banners for missing voice, audio route failures, or permission issues; feature remains usable (lens‑only) when TTS unavailable.
+
+### UX Details
+
+- **Activation affordance**: No visible control; gesture only on Georgian messages.
+- **Lens style**: Subtle shadow, system blur background, high-contrast letter glyph; matches app theme.
+- **States**: Hidden, Active (tracking), Dismissing (fade out ~120ms).
+- **Conflicts**: If system copy menu appears, hide lens and stop TTS.
+- **Loading states**: Brief inline HUD when initializing TTS the first time or when prompting to download Georgian voice; never blocks interaction longer than 2 s.
+
+### Errors & Edge Cases
+
+- Non‑Georgian characters (punctuation, emoji): show letter visually; do not speak unless within Georgian set.
+- Very short messages: lens still appears if Georgian detected.
+- Rapid scrubbing: debounce logic prevents audio spam; last letter wins.
+- Missing Georgian voice: show one‑time toast suggesting downloading the voice (do not block). Provide retry CTA in settings/help.
+
+### Analytics (optional)
+
+- Feature usage start/stop, letters spoken counts (sampled), failures (voice missing, audio errors), latency buckets (TTF phoneme) to validate SLAs.
+
+### Feature Flag
+
+- `FeatureFlags.dictationAIGeorgianMagnifier` (default: enabled). Allows remote/offline gating.
+
+### Accessibility
+
+- Disable custom TTS if VoiceOver running.
+- Large content size compatibility for lens glyph sizing.
+
+### Implementation Plan
+
+- **New** `Utilities/GeorgianScriptDetector.swift`
+- `func containsGeorgian(_ text: String) -> Bool`
+- `func isGeorgian(_ character: Character) -> Bool`
+- **New** `Services/TextToSpeechService.swift`
+- Thin wrapper over `AVSpeechSynthesizer` with letter‑level speak, debounce, and cancel.
+- **New** `Views/Components/MagnifierLensView.swift`
+- Configurable lens that displays a single character; theme‑aware.
+- **New** `Views/Chat/GeorgianMagnifierOverlay.swift`
+- Handles gesture, hit‑testing, letter tracking, and coordinates TTS + lens.
+- **Update** `Views/Chat/MessageBubbleView.swift`
+- When `containsGeorgian(message.text)` true, wrap text with `GeorgianMagnifierOverlay`.
+- **Update** `Services/FeatureFlags.swift`
+- Add `dictationAIGeorgianMagnifier` flag.
+
+### Key APIs & Pseudocode
+
+- Georgian detection:
+- Build `CharacterSet` from the three Unicode ranges and check any scalar membership.
+- TTS:
+- `let voice = AVSpeechSynthesisVoice(language: "ka-GE")`
+- `let utterance = AVSpeechUtterance(string: letter)`; set `voice`, `rate`, `volume`.
+- Maintain one synthesizer instance; `stopSpeaking(at: .immediate)` before next.
+- Hit‑testing:
+- iOS 17+: `TextLayout` to map `CGPoint` → glyph/character index.
+- Fallback: `UITextView.layoutManager.characterIndex(for:in:fractionOfDistanceBetweenInsertionPoints:)`.
+
+### Testing
+
+- Unit tests: Georgian detection, grapheme segmentation, debounce logic.
+- Integration tests: Scrub across long multi‑line Georgian text; ensure no crashes.
+- Performance tests: Measure TTS start latency and frame times to meet SLAs.
+- Manual QA: Missing voice, silent mode behavior, VoiceOver on/off.
+
+### Acceptance Criteria
+
+- Lens appears only on Georgian messages and during gesture.
+- Letter under finger is correctly magnified and spoken with minimal latency (see SLAs).
+- No interference with normal message interactions; no regressions in chat scrolling.
+- Graceful fallback when no Georgian voice or audio output is unavailable.
+- Loading and error states are present, clear, and non-blocking.
+
+### To-dos
+
+- [ ] Create GeorgianScriptDetector with Unicode range checks
+- [ ] Implement TextToSpeechService using AVSpeechSynthesizer with debounce
+- [ ] Create MagnifierLensView to display enlarged character
+- [ ] Implement letter hit-testing with TextLayout and UITextView fallback
+- [ ] Wrap Georgian messages with GeorgianMagnifierOverlay in MessageBubbleView
+- [ ] Add feature flag and basic analytics hooks
+- [ ] Write unit/integration tests for detection, TTS, hit-testing

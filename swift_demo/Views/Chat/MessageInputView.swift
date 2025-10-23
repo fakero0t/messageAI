@@ -13,6 +13,7 @@ struct MessageInputView: View {
     let onSend: () -> Void
     var onSendImage: ((UIImage) -> Void)? = nil // PR-8: Callback for image messages
     var onTextChange: ((String) -> Void)? = nil // PR-3: Optional callback for typing indicator
+    var disableSend: Bool = false // PR-4: Disable send while suggestions active
     
     // In Vue: this would be v-model:focused or defineModel('focused')
     @FocusState.Binding var isFocused: Bool
@@ -62,9 +63,9 @@ struct MessageInputView: View {
             }) {
                 Image(systemName: "arrow.up.circle.fill")
                     .font(.system(size: 32))
-                    .foregroundColor(text.isEmpty ? .gray : .blue)
+                    .foregroundColor((text.isEmpty || disableSend) ? .gray : .blue)
             }
-            .disabled(text.isEmpty)
+            .disabled(text.isEmpty || disableSend)
         }
         .padding(.horizontal)
         .padding(.vertical, 8)

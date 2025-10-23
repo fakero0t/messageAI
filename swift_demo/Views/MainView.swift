@@ -130,6 +130,24 @@ struct ProfileView: View {
                     }
                 }
                 
+                // PR-6: Geo Suggestions Settings
+                Section("Georgian Vocabulary Suggestions") {
+                    Toggle("Show word suggestions", isOn: Binding(
+                        get: { !UserDefaults.standard.bool(forKey: "geoSuggestionsDisabled") },
+                        set: { enabled in
+                            UserDefaults.standard.set(!enabled, forKey: "geoSuggestionsDisabled")
+                            if !enabled {
+                                // Reset session when disabling
+                                GeoSuggestionService.shared.resetSession()
+                            }
+                        }
+                    ))
+                    
+                    Text("Get suggestions for related Georgian words based on your frequently used vocabulary")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                
                 // Test Notifications Section
                 Section("Notifications") {
                     Button(action: {

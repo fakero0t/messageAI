@@ -41,7 +41,17 @@ struct MessageListView: View {
                             
                                 MessageBubbleView(
                                     message: message,
-                                    isFromCurrentUser: message.senderId == currentUserId,
+                                    isFromCurrentUser: {
+                                        let isFromCurrent = message.senderId == currentUserId
+                                        let textPreview = message.text?.prefix(20) ?? (message.imageUrl != nil ? "Image" : "Empty")
+                                        let georgianFlag = GeorgianScriptDetector.containsGeorgian(message.text ?? "") ? "🇬🇪" : "🇺🇸"
+                                        print("\(georgianFlag) [MessageListView] \(message.id.prefix(8))")
+                                        print("   Text: \(textPreview)")
+                                        print("   SenderId: '\(message.senderId)'")
+                                        print("   CurrentUserId: '\(currentUserId)'")
+                                        print("   isFromCurrent: \(isFromCurrent) → Will appear on \(isFromCurrent ? "RIGHT" : "LEFT")")
+                                        return isFromCurrent
+                                    }(),
                                     senderName: getSenderName?(message), // Added for PR-17
                                     onRetry: { onRetry?(message.id) },
                                     onDelete: { onDelete?(message.id) }
