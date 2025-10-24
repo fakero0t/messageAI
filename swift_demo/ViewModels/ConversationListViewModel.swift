@@ -429,6 +429,15 @@ class ConversationListViewModel: ObservableObject {
                     // Sync to local storage
                     try? await MessageService.shared.syncMessageFromFirestore(messageSnapshot)
                     
+                    // Mark as delivered if message is from someone else
+                    if messageSnapshot.senderId != currentUserId {
+                        print("📦 [ConversationListViewModel] Marking message as delivered")
+                        try? await ReadReceiptService.shared.markAsDelivered(
+                            messageId: messageSnapshot.id,
+                            userId: currentUserId
+                        )
+                    }
+                    
                     // ONLY trigger notification if:
                     // 1. Message is from someone else
                     // 2. Message is recent (last 30 seconds - accounts for network delays)

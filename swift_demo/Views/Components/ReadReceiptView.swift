@@ -33,17 +33,6 @@ struct ReadReceiptView: View {
                         .padding(.top, 2)
                         .padding(.trailing, 16)
                         .frame(maxWidth: .infinity, alignment: .trailing)
-                        .onAppear {
-                            print("✅ [ReadReceiptView] RENDERING receipt text: '\(text)'")
-                        }
-                } else {
-                    // DEBUG: Show when isLast=true but text=nil
-                    Text("⚠️ No receipt text (deliveredTo=\(message.deliveredTo.count), readBy=\(message.readBy.count))")
-                        .font(.caption2)
-                        .foregroundColor(.orange)
-                        .padding(.top, 2)
-                        .padding(.trailing, 16)
-                        .frame(maxWidth: .infinity, alignment: .trailing)
                 }
             }
         }
