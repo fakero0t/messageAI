@@ -211,24 +211,35 @@ class ReadReceiptService {
     ) -> ReadReceiptStatus {
         let recipientIds = participants.filter { $0 != message.senderId }
         
+        print("   🔍 [computeReadReceiptStatus]")
+        print("      Recipients (excluding sender): \(recipientIds)")
+        
         if recipientIds.isEmpty {
+            print("      ⚠️ No recipients - returning notDelivered")
             return .notDelivered
         }
         
         // Check delivery
         let deliveredCount = recipientIds.filter { message.deliveredTo.contains($0) }.count
+        print("      Delivered to: \(deliveredCount)/\(recipientIds.count) recipients")
+        
         if deliveredCount == 0 {
+            print("      ❌ Not delivered to anyone - returning notDelivered")
             return .notDelivered
         }
         
         // Check reads
         let readCount = recipientIds.filter { message.readBy.contains($0) }.count
+        print("      Read by: \(readCount)/\(recipientIds.count) recipients")
         
         if readCount == 0 {
+            print("      ✅ Delivered but not read - returning delivered")
             return .delivered
         } else if readCount == recipientIds.count {
+            print("      ✅ Read by all - returning readByAll")
             return .readByAll
         } else {
+            print("      ✅ Read by some - returning readBySome")
             return .readBySome
         }
     }
@@ -239,27 +250,43 @@ class ReadReceiptService {
         participants: [String],
         currentUserId: String
     ) -> String? {
+        print("📱 [ReadReceiptService] readReceiptText called")
+        print("   Message ID: \(message.id.prefix(8))")
+        print("   Sender ID: \(message.senderId)")
+        print("   Current User ID: \(currentUserId)")
+        print("   Participants: \(participants)")
+        print("   deliveredTo: \(message.deliveredTo)")
+        print("   readBy: \(message.readBy)")
+        
         // Only show for messages from current user
         guard message.senderId == currentUserId else {
+            print("   ❌ Not from current user - returning nil")
             return nil
         }
         
         let status = computeReadReceiptStatus(message: message, participants: participants)
         let isGroupChat = participants.count > 2
         
+        print("   Status: \(status)")
+        print("   Is Group Chat: \(isGroupChat)")
+        
+        let result: String?
         switch status {
         case .notDelivered:
-            return nil
+            result = nil
             
         case .delivered:
-            return "Delivered"
+            result = "Delivered"
             
         case .readBySome:
-            return isGroupChat ? "Read by some users" : readAtText(message)
+            result = isGroupChat ? "Read by some users" : readAtText(message)
             
         case .readByAll:
-            return isGroupChat ? "Read by all users" : readAtText(message)
+            result = isGroupChat ? "Read by all users" : readAtText(message)
         }
+        
+        print("   📊 Final result: \(result ?? "nil")")
+        return result
     }
     
     private func readAtText(_ message: MessageEntity) -> String {

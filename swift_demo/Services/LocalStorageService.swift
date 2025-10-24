@@ -96,6 +96,12 @@ class LocalStorageService {
         let descriptor = FetchDescriptor<MessageEntity>(predicate: predicate)
         
         if let message = try modelContext.fetch(descriptor).first {
+            print("💾 [LocalStorage] Updating message \(messageId.prefix(8))")
+            print("   Old deliveredTo: \(message.deliveredTo)")
+            print("   New deliveredTo: \(deliveredTo ?? [])")
+            print("   Old readBy: \(message.readBy)")
+            print("   New readBy: \(readBy)")
+            
             message.status = status
             message.readBy = readBy
             if let deliveredTo = deliveredTo {
@@ -108,6 +114,9 @@ class LocalStorageService {
                 message.readAt = readAt
             }
             try modelContext.save()
+            print("✅ [LocalStorage] Message updated and saved")
+        } else {
+            print("⚠️ [LocalStorage] Message not found: \(messageId.prefix(8))")
         }
     }
     

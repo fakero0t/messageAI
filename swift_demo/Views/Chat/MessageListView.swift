@@ -21,7 +21,15 @@ struct MessageListView: View {
     
     // Find index of last message from current user
     private var lastMessageFromCurrentUserIndex: Int? {
-        messages.lastIndex { $0.senderId == currentUserId }
+        let index = messages.lastIndex { $0.senderId == currentUserId }
+        if let index = index {
+            print("📍 [MessageListView] Last message from current user at index \(index)")
+            print("   Message ID: \(messages[index].id.prefix(8))")
+            print("   Total messages: \(messages.count)")
+        } else {
+            print("📍 [MessageListView] No messages from current user")
+        }
+        return index
     }
     
     var body: some View {
@@ -82,6 +90,11 @@ struct MessageListView: View {
                                         currentUserId: currentUserId,
                                         isLastFromCurrentUser: index == lastMessageFromCurrentUserIndex
                                     )
+                                    .onAppear {
+                                        print("📋 [MessageListView] ReadReceiptView appeared for message \(message.id.prefix(8)) at index \(index)")
+                                        print("   isLastFromCurrentUser: \(index == lastMessageFromCurrentUserIndex)")
+                                        print("   lastMessageFromCurrentUserIndex: \(String(describing: lastMessageFromCurrentUserIndex))")
+                                    }
                                 }
                                 .id(message.id)
                             }

@@ -117,21 +117,52 @@ class ChatViewModel: ObservableObject {
                         }
                         print("  Total participants: \(participants.count)")
                     } else {
-                        // Only observe recipient status for one-on-one chats (but not self-chats)
+                        // One-on-one chat: Load both participants for read receipts
+                        print("👥 Loading one-on-one chat details")
+                        
+                        // Add current user
+                        if let currentUser = try? await userService.fetchUser(byId: currentUserId) {
+                            participants.append(currentUser)
+                            print("  ✓ Added current user: \(currentUser.displayName)")
+                        }
+                        
+                        // Add recipient (but not for self-chats)
                         if !recipientId.isEmpty && recipientId != currentUserId {
+                            if let recipientUser = try? await userService.fetchUser(byId: recipientId) {
+                                participants.append(recipientUser)
+                                print("  ✓ Added recipient: \(recipientUser.displayName)")
+                            }
+                            
                             await MainActor.run {
                                 observeRecipientStatus()
                             }
                         }
+                        
+                        print("  Total participants: \(participants.count)")
                     }
                 } else {
                     // No conversation found in local storage (new chat)
+                    print("👥 New conversation - loading participants")
+                    
+                    // Add current user
+                    if let currentUser = try? await userService.fetchUser(byId: currentUserId) {
+                        participants.append(currentUser)
+                        print("  ✓ Added current user: \(currentUser.displayName)")
+                    }
+                    
                     // Assume one-on-one if recipientId is not empty (but not self-chats)
                     if !recipientId.isEmpty && recipientId != currentUserId {
+                        if let recipientUser = try? await userService.fetchUser(byId: recipientId) {
+                            participants.append(recipientUser)
+                            print("  ✓ Added recipient: \(recipientUser.displayName)")
+                        }
+                        
                         await MainActor.run {
                             observeRecipientStatus()
                         }
                     }
+                    
+                    print("  Total participants: \(participants.count)")
                 }
             } catch {
                 print("⚠️ Error loading conversation details: \(error)")
@@ -684,6 +715,24 @@ class ChatViewModel: ObservableObject {
                     print("💾 [ChatViewModel] Syncing message to local storage...")
                     try await self.messageService.syncMessageFromFirestore(snapshot)
                     
+                    // Automatically mark as delivered if this is a message for current user
+                    if snapshot.senderId != self.currentUserId {
+                        print("📦 [ChatViewModel] Auto-marking message as delivered")
+                        try? await self.readReceiptService.markAsDelivered(
+                            messageId: snapshot.id,
+                            userId: self.currentUserId
+                        )
+                        
+                        // If user is currently viewing this chat, immediately mark as read too
+                        if self.notificationService.currentConversationId == self.conversationId {
+                            print("📖 [ChatViewModel] User is viewing chat - immediately marking as read")
+                            try? await self.readReceiptService.markMessagesAsRead(
+                                conversationId: self.conversationId,
+                                userId: self.currentUserId
+                            )
+                        }
+                    }
+                    
                     // Automatically translate received message
                     if let text = snapshot.text, !text.isEmpty {
                         let tsMs = Int64(Date().timeIntervalSince1970 * 1000)
@@ -721,9 +770,10 @@ class ChatViewModel: ObservableObject {
                     }
                     
                     await MainActor.run {
-                        print("🔄 [ChatViewModel] Triggering UI update...")
+                        print("🔄 [ChatViewModel] Triggering UI update after message sync...")
                         self.objectWillChange.send() // Explicitly trigger update
                         self.loadLocalMessages()
+                        print("✅ [ChatViewModel] UI update complete, messages array has \(self.messages.count) items")
                         
                         // AI V3: Track English words from received messages
                         if let text = snapshot.text, !text.isEmpty {
@@ -824,15 +874,20 @@ class ChatViewModel: ObservableObject {
     }
     
     func markMessagesAsRead() {
+        print("📖 [ChatViewModel] markMessagesAsRead called for conversation: \(conversationId)")
         Task {
             do {
                 try await readReceiptService.markMessagesAsRead(
                     conversationId: conversationId,
                     userId: currentUserId
                 )
-                loadLocalMessages()
+                print("✅ [ChatViewModel] Messages marked as read, reloading local messages")
+                await MainActor.run {
+                    objectWillChange.send() // Force UI refresh
+                    loadLocalMessages()
+                }
             } catch {
-                print("⚠️ Failed to mark messages as read: \(error)")
+                print("⚠️ [ChatViewModel] Failed to mark messages as read: \(error)")
             }
         }
     }

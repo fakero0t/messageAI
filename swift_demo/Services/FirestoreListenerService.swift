@@ -42,7 +42,12 @@ class FirestoreListenerService {
                         do {
                             let messageData = change.document.data()
                             let messageSnapshot = try self.parseMessage(from: messageData)
-                            print("📨 Message: \(change.type == .added ? "Added" : "Modified") - \(messageSnapshot.text)")
+                            print("📨 Message: \(change.type == .added ? "Added" : "Modified") - \(messageSnapshot.text ?? "Image")")
+                            print("   Message ID: \(messageSnapshot.id.prefix(8))")
+                            print("   deliveredTo: \(messageSnapshot.deliveredTo)")
+                            print("   readBy: \(messageSnapshot.readBy)")
+                            print("   deliveredAt: \(messageSnapshot.deliveredAt?.description ?? "nil")")
+                            print("   readAt: \(messageSnapshot.readAt?.description ?? "nil")")
                             onMessage(messageSnapshot)
                         } catch {
                             print("❌ Error parsing message: \(error)")
