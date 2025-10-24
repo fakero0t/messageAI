@@ -63,17 +63,31 @@ struct MessageListView: View {
                 }
             }
             .onChange(of: messages.count) { oldValue, newValue in
-                if let lastMessage = messages.last {
-                    withAnimation {
-                        proxy.scrollTo(lastMessage.id, anchor: .bottom)
-                    }
-                }
+                scrollToBottom(proxy: proxy)
+            }
+            .onChange(of: messages) { oldValue, newValue in
+                // Scroll when messages array changes (e.g., initial load)
+                scrollToBottom(proxy: proxy)
             }
             .onAppear {
-                if let lastMessage = messages.last {
-                    proxy.scrollTo(lastMessage.id, anchor: .bottom)
+                // Use Task to ensure layout is complete before scrolling
+                Task {
+                    try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 second delay
+                    scrollToBottom(proxy: proxy, animated: false)
                 }
             }
+        }
+    }
+    
+    private func scrollToBottom(proxy: ScrollViewProxy, animated: Bool = true) {
+        guard let lastMessage = messages.last else { return }
+        
+        if animated {
+            withAnimation {
+                proxy.scrollTo(lastMessage.id, anchor: .bottom)
+            }
+        } else {
+            proxy.scrollTo(lastMessage.id, anchor: .bottom)
         }
     }
     

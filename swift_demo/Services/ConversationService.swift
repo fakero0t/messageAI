@@ -163,6 +163,13 @@ class ConversationService {
         print("🎧🎧🎧 [ConversationService] Starting conversation listener for user: \(userId)")
         print("🎧🎧🎧 [ConversationService] Query: conversations where participants array-contains '\(userId)' order by lastMessageTime desc")
         
+        // Remove any existing listener for this user first to prevent duplicates
+        if let existingListener = conversationListeners[userId] {
+            print("🔄 [ConversationService] Removing existing listener for userId: \(userId)")
+            existingListener.remove()
+            conversationListeners.removeValue(forKey: userId)
+        }
+        
         let listener = db.collection("conversations")
             .whereField("participants", arrayContains: userId)
             .order(by: "lastMessageTime", descending: true)

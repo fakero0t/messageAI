@@ -785,32 +785,8 @@ class ChatViewModel: ObservableObject {
             }
         }
         
-        // ✨ NEW: Increment unread count ONLY if user not viewing this conversation
-        let isViewingThisConversation = notificationService.currentConversationId == conversationId
-        print("📊 [ChatViewModel] Unread count check:")
-        print("   Current conversation: \(notificationService.currentConversationId ?? "nil")")
-        print("   Message conversation: \(conversationId)")
-        print("   Is viewing: \(isViewingThisConversation)")
-        
-        if !isViewingThisConversation {
-            print("📊 [ChatViewModel] User NOT viewing this conversation - incrementing unread count")
-            Task {
-                do {
-                    try await localStorage.incrementUnreadCount(conversationId: conversationId)
-                    print("✅ [ChatViewModel] Unread count incremented for: \(conversationId)")
-                    
-                    // Notify ConversationListViewModel to refresh
-                    await MainActor.run {
-                        NotificationCenter.default.post(name: .unreadCountDidChange, object: nil)
-                        print("📢 [ChatViewModel] Posted unreadCountDidChange notification")
-                    }
-                } catch {
-                    print("❌ [ChatViewModel] Failed to increment unread count: \(error)")
-                }
-            }
-        } else {
-            print("ℹ️ [ChatViewModel] User IS viewing conversation - skipping unread count increment")
-        }
+        // Note: Unread count is managed by ConversationListViewModel to avoid double-counting
+        // ChatViewModel only handles real-time message display and notifications
     }
     
     private func observeNetwork() {
