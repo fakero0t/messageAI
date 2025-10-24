@@ -16,6 +16,7 @@ class AuthenticationService: ObservableObject {
     @Published var currentUser: User?
     private let auth = Auth.auth()
     private let db = Firestore.firestore()
+    private var isCreatingNewUser = false // Flag to prevent fallback during signup
     
     private init() {
         setupAuthStateListener()
@@ -39,27 +40,41 @@ class AuthenticationService: ObservableObject {
     
     private func loadUserData(userId: String) {
         db.collection("users").document(userId).getDocument { [weak self] snapshot, error in
+            guard let self = self else { return }
+            
             if let error = error {
                 print("Error loading user data: \(error)")
-                // Still set a basic user so auth completes
-                self?.createFallbackUser(userId: userId)
+                // Don't create fallback if we're in the middle of creating a new user
+                if !self.isCreatingNewUser {
+                    self.createFallbackUser(userId: userId)
+                }
                 return
             }
             
             guard let data = snapshot?.data() else {
-                print("No user document found for userId: \(userId) - creating fallback")
-                self?.createFallbackUser(userId: userId)
+                print("No user document found for userId: \(userId)")
+                // Don't create fallback if we're in the middle of creating a new user
+                if !self.isCreatingNewUser {
+                    print("Creating fallback user")
+                    self.createFallbackUser(userId: userId)
+                } else {
+                    print("Waiting for user document to be created during signup...")
+                }
                 return
             }
             
             guard let user = try? Firestore.Decoder().decode(User.self, from: data) else {
                 print("Failed to decode user data")
-                self?.createFallbackUser(userId: userId)
+                if !self.isCreatingNewUser {
+                    self.createFallbackUser(userId: userId)
+                }
                 return
             }
             
             Task { @MainActor in
-                self?.currentUser = user
+                self.currentUser = user
+                // Clear the flag once we successfully load the user
+                self.isCreatingNewUser = false
             }
         }
     }
@@ -104,8 +119,26 @@ class AuthenticationService: ObservableObject {
             throw AuthError.usernameTaken
         }
         
-        let result = try await auth.createUser(withEmail: email, password: password)
-        try await createUserDocument(userId: result.user.uid, email: email, username: normalizedUsername, displayName: displayName)
+        // Set flag to prevent fallback user creation during signup
+        isCreatingNewUser = true
+        
+        do {
+            // Create Firebase Auth user
+            let result = try await auth.createUser(withEmail: email, password: password)
+            
+            // Immediately create user document with specified username to prevent race condition
+            // This must happen before the auth state listener tries to load the user
+            try await createUserDocument(userId: result.user.uid, email: email, username: normalizedUsername, displayName: displayName)
+            
+            print("✅ User created with username: @\(normalizedUsername)")
+            
+            // Force reload user data now that document is created
+            loadUserData(userId: result.user.uid)
+        } catch {
+            // Clear flag if signup fails
+            isCreatingNewUser = false
+            throw error
+        }
     }
     
     func signIn(email: String, password: String) async throws {

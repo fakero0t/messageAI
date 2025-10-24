@@ -235,7 +235,9 @@ class ConversationService {
                     if snapshot.isGroup {
                         existingConversation.groupName = snapshot.groupName
                     }
-                    // SwiftData auto-saves changes to tracked objects
+                    // Explicitly save changes
+                    try localStorage.saveContext()
+                    print("✅ Conversation changes saved to SwiftData")
                 } else {
                     // Create new
                     print("➕ Creating new conversation: \(snapshot.id)")

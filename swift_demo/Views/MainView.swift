@@ -158,6 +158,8 @@ struct ProfileView: View {
                                         await MainActor.run {
                                             GeoSuggestionService.shared.resetSession()
                                             EnglishTranslationSuggestionService.shared.resetSession()
+                                            // Notify message bubbles to collapse
+                                            NotificationCenter.default.post(name: .georgianLearningModeDisabled, object: nil)
                                         }
                                     }
                                 } catch {
@@ -359,3 +361,7 @@ struct ProfileView: View {
     }
 }
 
+// MARK: - Notification Names
+extension Notification.Name {
+    static let georgianLearningModeDisabled = Notification.Name("georgianLearningModeDisabled")
+}

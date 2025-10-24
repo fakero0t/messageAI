@@ -183,6 +183,15 @@ struct MessageBubbleView: View {
                 translatedKA = ka
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .georgianLearningModeDisabled)) { _ in
+            // Collapse expanded messages when Georgian learning mode is disabled
+            if isExpanded {
+                print("🔽 [MessageBubble] Collapsing message due to Georgian learning mode disabled")
+                withAnimation(.spring(response: 0.3)) {
+                    isExpanded = false
+                }
+            }
+        }
     }
     
     private var bubbleColor: Color {
@@ -235,6 +244,13 @@ struct MessageBubbleView: View {
 
     private func handleDoubleTap() {
         print("👆 [MessageBubble] Double-tap on message: \(message.id)")
+        
+        // Check if user is in Georgian learning mode
+        guard AuthenticationService.shared.currentUser?.georgianLearningMode ?? false else {
+            print("⚠️ [MessageBubble] Double-tap disabled: user not in Georgian learning mode")
+            return
+        }
+        
         guard let text = message.text else {
             print("⚠️ [MessageBubble] Guard failed: no text")
             return
@@ -338,6 +354,13 @@ struct MessageBubbleView: View {
     // AI V3: Handle long-press for word definition lookup (from TappableTextView)
     private func handleLongPressWord(word: String, fullContext: String) {
         print("👆 [MessageBubble] Long-press for definition lookup")
+        
+        // Check if user is in Georgian learning mode
+        guard AuthenticationService.shared.currentUser?.georgianLearningMode ?? false else {
+            print("⚠️ [MessageBubble] Long-press disabled: user not in Georgian learning mode")
+            return
+        }
+        
         print("📖 [MessageBubble] Word: \(word)")
         print("📝 [MessageBubble] Context: \(fullContext)")
         

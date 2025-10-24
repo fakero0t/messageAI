@@ -18,6 +18,12 @@ class LocalStorageService {
         self.modelContext = PersistenceController.shared.container.mainContext
     }
     
+    // MARK: - Context Operations
+    
+    func saveContext() throws {
+        try modelContext.save()
+    }
+    
     // MARK: - Message Operations
     
     func saveMessage(_ message: MessageEntity) throws {

@@ -353,17 +353,33 @@ class ConversationListViewModel: ObservableObject {
         print("   Exists locally: \(existsLocally ? "YES" : "NO (NEW!)")")
         
         do {
-            // Sync to local storage
+            // Get local timestamp VALUE (not object reference) BEFORE syncing
+            let localTimestamp: Date? = await MainActor.run {
+                return (try? localStorage.fetchConversation(byId: snapshot.id))?.lastMessageTime
+            }
+            
+            // Sync to local storage (this updates the conversation object)
             try await conversationService.syncConversationFromFirestore(snapshot)
             print("✅ [ConversationListViewModel] Conversation synced to local storage")
             
-            // ONLY fetch recent messages for NEW conversations
-            // For existing conversations, the message listener in ChatViewModel handles notifications
+            // Compare using the captured timestamp value
+            let shouldFetchMessages: Bool
             if !existsLocally {
                 print("📥 [ConversationListViewModel] NEW conversation - fetching recent messages...")
-                await fetchRecentMessages(for: snapshot.id)
+                shouldFetchMessages = true
             } else {
-                print("ℹ️ [ConversationListViewModel] Existing conversation - skipping message fetch (ChatViewModel handles this)")
+                let localTime = localTimestamp ?? Date.distantPast
+                let remoteTime = snapshot.lastMessageTime ?? Date.distantPast
+                let hasNewMessage = remoteTime > localTime
+                print("ℹ️ [ConversationListViewModel] Existing conversation - checking for new messages:")
+                print("   Local time (captured before sync): \(localTime)")
+                print("   Remote time: \(remoteTime)")
+                print("   Has new message: \(hasNewMessage)")
+                shouldFetchMessages = hasNewMessage
+            }
+            
+            if shouldFetchMessages {
+                await fetchRecentMessages(for: snapshot.id)
             }
             
             // Reload conversations to update UI
@@ -409,10 +425,10 @@ class ConversationListViewModel: ObservableObject {
                     
                     // ONLY trigger notification if:
                     // 1. Message is from someone else
-                    // 2. Message is recent (last 10 seconds)
+                    // 2. Message is recent (last 30 seconds - accounts for network delays)
                     // 3. Message didn't exist locally (it's new)
                     if messageSnapshot.senderId != currentUserId && !messageExistsLocally {
-                        if messageAge < 10 {
+                        if messageAge < 30 {
                             print("🔔 [ConversationListViewModel] NEW recent message (\(Int(messageAge))s old), triggering notification")
                             await showNotificationForMessage(messageSnapshot, conversationId: conversationId)
                         } else {
@@ -488,6 +504,10 @@ class ConversationListViewModel: ObservableObject {
                     do {
                         try localStorage.incrementUnreadCount(conversationId: conversationId)
                         print("✅ [ConversationListViewModel] Unread count incremented for: \(conversationId)")
+                        
+                        // Notify to refresh the conversation list UI
+                        NotificationCenter.default.post(name: .unreadCountDidChange, object: nil)
+                        print("📢 [ConversationListViewModel] Posted unreadCountDidChange notification")
                     } catch {
                         print("❌ [ConversationListViewModel] Failed to increment unread count: \(error)")
                     }

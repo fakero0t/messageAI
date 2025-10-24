@@ -51,7 +51,7 @@ struct ConversationRowView: View {
                     Text(lastMessagePreview)
                         .font(.subheadline)
                         .foregroundColor(hasUnreadMessages ? .primary : .secondary)
-                        .fontWeight(hasUnreadMessages ? .medium : .regular)
+                        .fontWeight(hasUnreadMessages ? .semibold : .regular)
                         .lineLimit(1)
                     
                     Spacer()
