@@ -26,9 +26,11 @@ struct ImageMessageView: View {
                     .aspectRatio(contentMode: .fit)
                     .frame(maxWidth: maxSize, maxHeight: maxSize)
                     .cornerRadius(16)
-                    .onTapGesture {
-                        onTap()
-                    }
+                    .simultaneousGesture(
+                        TapGesture().onEnded {
+                            onTap()
+                        }
+                    )
             } else if loadError {
                 errorView
             } else {

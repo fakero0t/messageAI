@@ -54,6 +54,9 @@ struct TappableTextView: UIViewRepresentable {
             action: #selector(Coordinator.handleLongPress(_:))
         )
         longPress.minimumPressDuration = 0.5
+        // Allow scrolling to work simultaneously with long-press detection
+        longPress.cancelsTouchesInView = false
+        longPress.delaysTouchesBegan = false
         label.addGestureRecognizer(longPress)
         
         return label

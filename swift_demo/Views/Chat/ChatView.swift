@@ -17,6 +17,7 @@ struct ChatView: View {
     @EnvironmentObject private var notificationService: NotificationService
     @State private var messageText = ""
     @State private var showGroupInfo = false // Added for PR-17
+    @State private var showUserProfile = false // Show user profile for 1-on-1 chats
     @State private var undoText: String? // PR-4: Geo Suggestions undo state
     @State private var hasSuggestions = false // PR-4: Track if suggestions are showing
     @FocusState private var isInputFocused: Bool
@@ -103,7 +104,8 @@ struct ChatView: View {
                 ChatHeaderView(
                     viewModel: viewModel,
                     recipientName: recipientName,
-                    showGroupInfo: $showGroupInfo
+                    showGroupInfo: $showGroupInfo,
+                    showUserProfile: $showUserProfile
                 )
             }
         }
@@ -111,6 +113,9 @@ struct ChatView: View {
             if let conversationId = conversationId {
                 GroupInfoView(groupId: conversationId)
             }
+        }
+        .sheet(isPresented: $showUserProfile) {
+            UserProfileView(userId: recipientId)
         }
         .onAppear {
             viewModel.markMessagesAsRead()
@@ -176,6 +181,7 @@ struct ChatHeaderView: View {
     @ObservedObject var viewModel: ChatViewModel
     let recipientName: String
     @Binding var showGroupInfo: Bool
+    @Binding var showUserProfile: Bool
     
     @State private var recipientUser: User?
     
@@ -210,29 +216,35 @@ struct ChatHeaderView: View {
                     showGroupInfo = true
                 }
             } else {
-                // PR-16: 1-on-1 - Show avatar + name + status
-                AvatarView(user: recipientUser, size: 36)
-                
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(recipientUser?.displayName ?? recipientName)
-                        .font(.headline)
+                // PR-16: 1-on-1 - Show avatar + name + status (tappable to show user profile)
+                HStack(spacing: 8) {
+                    AvatarView(user: recipientUser, size: 36)
                     
-                    // Typing indicator or status (hide status for self-chats)
-                    if let typingText = viewModel.typingText {
-                        HStack(spacing: 4) {
-                            Text(typingText)
-                                .font(.caption)
-                                .foregroundColor(.green)
-                            TypingDotsView()
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(recipientUser?.displayName ?? recipientName)
+                            .font(.headline)
+                        
+                        // Typing indicator or status (hide status for self-chats)
+                        if let typingText = viewModel.typingText {
+                            HStack(spacing: 4) {
+                                Text(typingText)
+                                    .font(.caption)
+                                    .foregroundColor(.green)
+                                TypingDotsView()
+                            }
+                            .transition(.opacity)
+                        } else if !isSelfChat {
+                            OnlineStatusView(
+                                isOnline: viewModel.recipientOnline,
+                                lastSeen: viewModel.recipientLastSeen
+                            )
+                            .font(.caption)
                         }
-                        .transition(.opacity)
-                    } else if !isSelfChat {
-                        OnlineStatusView(
-                            isOnline: viewModel.recipientOnline,
-                            lastSeen: viewModel.recipientLastSeen
-                        )
-                        .font(.caption)
                     }
+                }
+                .contentShape(Rectangle()) // Make entire area tappable
+                .onTapGesture {
+                    showUserProfile = true
                 }
             }
         }

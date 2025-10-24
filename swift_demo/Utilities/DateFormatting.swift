@@ -87,15 +87,33 @@ extension Date {
             return "Yesterday"
         }
         
-        // This week
-        let now = Date()
-        let components = calendar.dateComponents([.day], from: self, to: now)
-        if let days = components.day, days < 7 {
-            return self.formatted(.dateTime.weekday(.wide))
+        // For older messages: "Wed. Oct 14th"
+        let formatter = DateFormatter()
+        formatter.dateFormat = "EEE. MMM d"
+        let dateString = formatter.string(from: self)
+        
+        // Add ordinal suffix (st, nd, rd, th)
+        let day = calendar.component(.day, from: self)
+        let suffix: String
+        switch day {
+        case 1, 21, 31:
+            suffix = "st"
+        case 2, 22:
+            suffix = "nd"
+        case 3, 23:
+            suffix = "rd"
+        default:
+            suffix = "th"
         }
         
-        // Older
-        return self.formatted(date: .abbreviated, time: .omitted)
+        return "\(dateString)\(suffix)"
+    }
+    
+    /// Returns absolute time format (e.g., "5:42pm")
+    func absoluteTime() -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "h:mma"
+        return formatter.string(from: self).lowercased()
     }
     
     /// Check if two dates are on the same day

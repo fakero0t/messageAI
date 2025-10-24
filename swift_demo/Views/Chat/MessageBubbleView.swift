@@ -14,6 +14,7 @@ struct MessageBubbleView: View {
     let senderName: String? // Added for PR-17
     let onRetry: () -> Void
     let onDelete: () -> Void
+    let dragOffset: CGFloat // Shared from parent
     
     @State private var showFullScreenImage = false // PR-10
     @State private var isExpanded = false
@@ -34,123 +35,137 @@ struct MessageBubbleView: View {
         let maxBubbleWidth = UIScreen.main.bounds.width * 0.75
         let contentWidth = maxBubbleWidth - 24  // Subtract horizontal padding (12 * 2)
         
-        HStack {
-            if isFromCurrentUser {
-                Spacer()
-            }
-            
-            VStack(alignment: isFromCurrentUser ? .trailing : .leading, spacing: 4) {
-                // Sender name for group messages (PR-17)
-                if !isFromCurrentUser, let senderName = senderName {
-                    Text(senderName)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .padding(.leading, 4)
+        ZStack(alignment: .trailing) {
+            HStack {
+                if isFromCurrentUser {
+                    Spacer()
                 }
                 
-                // PR-10: Display image or text message
-                if message.isImageMessage {
-                    ImageMessageView(
-                        message: message,
-                        isFromCurrentUser: isFromCurrentUser,
-                        onTap: {
-                            print("🖼️ [MessageBubble] Opening full-screen viewer for: \(message.id)")
-                            showFullScreenImage = true
-                        }
-                    )
-                } else if let text = message.text {
-                    ZStack {
-                        if isExpanded {
-                            VStack(alignment: .leading, spacing: 8) {
-                                HStack(alignment: .top, spacing: 6) {
-                                    Text("🇺🇸")
-                                    Text(translatedEN.isEmpty ? text : translatedEN)
-                                }
-                                Divider()
-                                HStack(alignment: .top, spacing: 6) {
-                                    Text("🇬🇪")
-                                    // AI V3: Use TappableTextView for Georgian in expanded view
-                                    let georgianText = translatedKA.isEmpty ? text : translatedKA
-                                    if GeorgianScriptDetector.containsGeorgian(georgianText) {
-                                        LongPressableText(
-                                            text: georgianText,
-                                            font: .body,
-                                            color: textColor,
-                                            alignment: .leading,
-                                            maxWidth: contentWidth - 30
-                                        ) { word, fullContext in
-                                            handleLongPressWord(word: word, fullContext: fullContext)
-                                        }
-                                    } else {
-                                        Text(georgianText)
+                VStack(alignment: isFromCurrentUser ? .trailing : .leading, spacing: 4) {
+                    // Sender name for group messages (PR-17)
+                    if !isFromCurrentUser, let senderName = senderName {
+                        Text(senderName)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .padding(.leading, 4)
+                    }
+                    
+                    // PR-10: Display image or text message
+                    if message.isImageMessage {
+                        ImageMessageView(
+                            message: message,
+                            isFromCurrentUser: isFromCurrentUser,
+                            onTap: {
+                                print("🖼️ [MessageBubble] Opening full-screen viewer for: \(message.id)")
+                                showFullScreenImage = true
+                            }
+                        )
+                    } else if let text = message.text {
+                        ZStack {
+                            if isExpanded {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    HStack(alignment: .top, spacing: 6) {
+                                        Text("🇺🇸")
+                                        Text(translatedEN.isEmpty ? text : translatedEN)
                                     }
-                                }
-                            }
-                            .padding(12)
-                            .background(bubbleColor)
-                            .foregroundColor(textColor)
-                            .cornerRadius(16)
-                            .frame(maxWidth: maxBubbleWidth, alignment: .leading)
-                            .onTapGesture(count: 2) {
-                                handleDoubleTap()
-                            }
-                        } else {
-                            // AI V3: Use TappableTextView for Georgian text to detect exact word
-                            if GeorgianScriptDetector.containsGeorgian(text) {
-                                LongPressableText(
-                                    text: text,
-                                    font: .body,
-                                    color: textColor,
-                                    alignment: isFromCurrentUser ? .trailing : .leading,
-                                    maxWidth: contentWidth
-                                ) { word, fullContext in
-                                    handleLongPressWord(word: word, fullContext: fullContext)
+                                    Divider()
+                                    HStack(alignment: .top, spacing: 6) {
+                                        Text("🇬🇪")
+                                        // AI V3: Use TappableTextView for Georgian in expanded view
+                                        let georgianText = translatedKA.isEmpty ? text : translatedKA
+                                        if GeorgianScriptDetector.containsGeorgian(georgianText) {
+                                            LongPressableText(
+                                                text: georgianText,
+                                                font: .body,
+                                                color: textColor,
+                                                alignment: .leading,
+                                                maxWidth: contentWidth - 30
+                                            ) { word, fullContext in
+                                                handleLongPressWord(word: word, fullContext: fullContext)
+                                            }
+                                        } else {
+                                            Text(georgianText)
+                                        }
+                                    }
                                 }
                                 .padding(12)
                                 .background(bubbleColor)
+                                .foregroundColor(textColor)
                                 .cornerRadius(16)
-                                .frame(maxWidth: maxBubbleWidth, alignment: isFromCurrentUser ? .trailing : .leading)
-                                .onTapGesture(count: 2) {
-                                    handleDoubleTap()
-                                }
-                            } else {
-                                // Regular text for non-Georgian messages
-                                Text(text)
-                                    .padding(12)
-                                    .background(bubbleColor)
-                                    .foregroundColor(textColor)
-                                    .cornerRadius(16)
-                                    .frame(maxWidth: maxBubbleWidth, alignment: isFromCurrentUser ? .trailing : .leading)
-                                    .onTapGesture(count: 2) {
+                                .frame(maxWidth: maxBubbleWidth, alignment: .leading)
+                                .simultaneousGesture(
+                                    TapGesture(count: 2).onEnded {
                                         handleDoubleTap()
                                     }
+                                )
+                            } else {
+                                // AI V3: Use TappableTextView for Georgian text to detect exact word
+                                if GeorgianScriptDetector.containsGeorgian(text) {
+                                    LongPressableText(
+                                        text: text,
+                                        font: .body,
+                                        color: textColor,
+                                        alignment: isFromCurrentUser ? .trailing : .leading,
+                                        maxWidth: contentWidth
+                                    ) { word, fullContext in
+                                        handleLongPressWord(word: word, fullContext: fullContext)
+                                    }
+                                    .padding(12)
+                                    .background(bubbleColor)
+                                    .cornerRadius(16)
+                                    .frame(maxWidth: maxBubbleWidth, alignment: isFromCurrentUser ? .trailing : .leading)
+                                    .simultaneousGesture(
+                                        TapGesture(count: 2).onEnded {
+                                            handleDoubleTap()
+                                        }
+                                    )
+                                } else {
+                                    // Regular text for non-Georgian messages
+                                    Text(text)
+                                        .padding(12)
+                                        .background(bubbleColor)
+                                        .foregroundColor(textColor)
+                                        .cornerRadius(16)
+                                        .frame(maxWidth: maxBubbleWidth, alignment: isFromCurrentUser ? .trailing : .leading)
+                                        .simultaneousGesture(
+                                            TapGesture(count: 2).onEnded {
+                                                handleDoubleTap()
+                                            }
+                                        )
+                                }
                             }
                         }
                     }
-                }
-                
-                HStack(spacing: 4) {
-                    Text(message.timestamp.chatTimestamp())
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
                     
-                    if isFromCurrentUser {
-                        statusIndicator
+                    // Only show status indicator for failed messages
+                    if message.status == .failed && isFromCurrentUser {
+                        HStack(spacing: 4) {
+                            statusIndicator
+                        }
+                    }
+                    
+                    if message.status == .failed && isFromCurrentUser {
+                        FailedMessageActionsView(onRetry: onRetry, onDelete: onDelete)
                     }
                 }
                 
-                if message.status == .failed && isFromCurrentUser {
-                    FailedMessageActionsView(onRetry: onRetry, onDelete: onDelete)
+                if !isFromCurrentUser {
+                    Spacer()
                 }
             }
+            .offset(x: dragOffset)
             
-            if !isFromCurrentUser {
-                Spacer()
-            }
+            // Timestamp always rendered, positioned based on drag offset
+            Text(message.timestamp.absoluteTime())
+                .font(.caption2)
+                .foregroundColor(.secondary)
+                .padding(.trailing, 20)
+                .opacity(min(1.0, max(0.0, abs(dragOffset) / 40))) // Fade in as user drags
         }
         .padding(.horizontal)
         .padding(.vertical, 2)
         .animation(.easeInOut(duration: 0.2), value: message.status)
+        .animation(nil, value: dragOffset) // No animation on drag for instant response
         .sheet(isPresented: $showFullScreenImage) {
             FullScreenImageView(
                 imageUrl: message.imageUrl,

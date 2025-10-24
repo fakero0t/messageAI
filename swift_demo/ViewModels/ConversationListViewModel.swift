@@ -362,6 +362,12 @@ class ConversationListViewModel: ObservableObject {
             try await conversationService.syncConversationFromFirestore(snapshot)
             print("✅ [ConversationListViewModel] Conversation synced to local storage")
             
+            // ✨ NEW: Handle "added to group" scenario
+            if !existsLocally && snapshot.isGroup {
+                print("🎉 [ConversationListViewModel] User added to new group!")
+                await handleAddedToGroup(snapshot)
+            }
+            
             // Compare using the captured timestamp value
             let shouldFetchMessages: Bool
             if !existsLocally {
@@ -520,6 +526,47 @@ class ConversationListViewModel: ObservableObject {
                 print("ℹ️ [ConversationListViewModel] User IS viewing conversation - skipping unread count increment")
             }
         }
+    
+    private func handleAddedToGroup(_ snapshot: ConversationSnapshot) async {
+        print("🎉 [ConversationListViewModel] Handling 'added to group' for: \(snapshot.id)")
+        print("   Group name: \(snapshot.groupName ?? "Unnamed Group")")
+        
+        let groupName = snapshot.groupName ?? "a group"
+        let previewMessage = "You've been added to a new group"
+        
+        // Update the conversation with the special preview message and set unread count
+        await MainActor.run {
+            do {
+                if let conversation = try? localStorage.fetchConversation(byId: snapshot.id) {
+                    conversation.lastMessageText = previewMessage
+                    conversation.unreadCount = 1
+                    // SwiftData auto-saves changes to tracked objects
+                    print("✅ [ConversationListViewModel] Updated group conversation with preview message")
+                }
+            }
+        }
+        
+        // Show system notification
+        await MainActor.run {
+            print("🔔 [ConversationListViewModel] Showing notification for group add")
+            NotificationService.shared.showMessageNotification(
+                conversationId: snapshot.id,
+                senderName: groupName,
+                messageText: previewMessage,
+                isGroup: true
+            )
+            
+            // Show in-app notification
+            let inAppNotification = InAppNotification(
+                conversationId: snapshot.id,
+                senderName: groupName,
+                messageText: previewMessage,
+                isGroup: true
+            )
+            InAppNotificationManager.shared.show(inAppNotification)
+            print("🔔 [ConversationListViewModel] In-app notification triggered for group add")
+        }
+    }
     
     private func parseMessage(from data: [String: Any]) throws -> MessageSnapshot {
         return MessageSnapshot(
