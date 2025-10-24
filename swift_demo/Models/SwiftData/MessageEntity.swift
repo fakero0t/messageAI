@@ -16,7 +16,12 @@ final class MessageEntity {
     var text: String? // PR-7: Made nullable for image-only messages
     var timestamp: Date
     var statusRaw: String
-    var readBy: [String]
+    var readBy: [String] = []
+    
+    // Read receipts: Delivery tracking
+    var deliveredTo: [String] = [] // User IDs who received the message
+    var deliveredAt: Date? = nil // When message was first delivered
+    var readAt: Date? = nil // When message was first read (for 1-on-1)
     
     // PR-7: Image support
     var imageUrl: String? // Download URL from Firebase Storage
@@ -61,6 +66,9 @@ final class MessageEntity {
         timestamp: Date,
         status: MessageStatus,
         readBy: [String] = [],
+        deliveredTo: [String] = [],
+        deliveredAt: Date? = nil,
+        readAt: Date? = nil,
         imageUrl: String? = nil,
         imageLocalPath: String? = nil,
         imageWidth: Double? = nil,
@@ -77,6 +85,9 @@ final class MessageEntity {
         self.timestamp = timestamp
         self.statusRaw = status.rawValue
         self.readBy = readBy
+        self.deliveredTo = deliveredTo
+        self.deliveredAt = deliveredAt
+        self.readAt = readAt
         self.imageUrl = imageUrl
         self.imageLocalPath = imageLocalPath
         self.imageWidth = imageWidth

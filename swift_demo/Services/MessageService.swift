@@ -34,7 +34,10 @@ class MessageService {
                 "text": text,
                 "timestamp": FieldValue.serverTimestamp(),
                 "status": "delivered",
-                "readBy": [] // Empty - recipients will add themselves when they read it
+                "readBy": [], // Empty - recipients will add themselves when they read it
+                "deliveredTo": [], // Empty - will be populated when delivered
+                "deliveredAt": NSNull(), // Null until first delivery
+                "readAt": NSNull() // Null until first read
             ]
 
             try await self.db.collection("messages").document(messageId).setData(messageData)
@@ -87,6 +90,9 @@ class MessageService {
                 "timestamp": FieldValue.serverTimestamp(),
                 "status": "delivered",
                 "readBy": [],
+                "deliveredTo": [], // Empty - will be populated when delivered
+                "deliveredAt": NSNull(), // Null until first delivery
+                "readAt": NSNull(), // Null until first read
                 "imageUrl": imageUrl,
                 "imageWidth": imageWidth,
                 "imageHeight": imageHeight
@@ -137,7 +143,10 @@ class MessageService {
                     try localStorage.updateMessage(
                         messageId: snapshot.id,
                         status: MessageStatus(rawValue: snapshot.status) ?? .delivered,
-                        readBy: snapshot.readBy
+                        readBy: snapshot.readBy,
+                        deliveredTo: snapshot.deliveredTo,
+                        deliveredAt: snapshot.deliveredAt,
+                        readAt: snapshot.readAt
                     )
                 } else {
                     // Insert new message
@@ -150,6 +159,9 @@ class MessageService {
                         timestamp: snapshot.timestamp,
                         status: MessageStatus(rawValue: snapshot.status) ?? .delivered,
                         readBy: snapshot.readBy,
+                        deliveredTo: snapshot.deliveredTo,
+                        deliveredAt: snapshot.deliveredAt,
+                        readAt: snapshot.readAt,
                         imageUrl: snapshot.imageUrl,
                         imageWidth: snapshot.imageWidth,
                         imageHeight: snapshot.imageHeight

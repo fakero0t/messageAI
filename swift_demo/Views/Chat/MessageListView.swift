@@ -10,6 +10,7 @@ import SwiftUI
 struct MessageListView: View {
     let messages: [MessageEntity]
     let currentUserId: String
+    let participantIds: [String]
     let getSenderName: ((MessageEntity) -> String?)? // Added for PR-17
     let onRetry: ((String) -> Void)?
     let onDelete: ((String) -> Void)?
@@ -17,6 +18,11 @@ struct MessageListView: View {
     // Timestamp reveal state for all messages
     @State private var dragOffset: CGFloat = 0
     @State private var isDraggingHorizontally: Bool = false
+    
+    // Find index of last message from current user
+    private var lastMessageFromCurrentUserIndex: Int? {
+        messages.lastIndex { $0.senderId == currentUserId }
+    }
     
     var body: some View {
         GeometryReader { geometry in
@@ -43,11 +49,12 @@ struct MessageListView: View {
                     } else {
                         LazyVStack(spacing: 0) {
                             ForEach(Array(messages.enumerated()), id: \.element.id) { index, message in
-                                // Show date separator if different day from previous message
-                                if shouldShowDateSeparator(at: index) {
-                                    DateSeparatorView(date: message.timestamp)
-                                }
-                                
+                                VStack(spacing: 0) {
+                                    // Show date separator if different day from previous message
+                                    if shouldShowDateSeparator(at: index) {
+                                        DateSeparatorView(date: message.timestamp)
+                                    }
+                                    
                                     MessageBubbleView(
                                         message: message,
                                         isFromCurrentUser: {
@@ -67,6 +74,15 @@ struct MessageListView: View {
                                         dragOffset: dragOffset
                                     )
                                     .padding(.top, messageSpacing(at: index))
+                                    
+                                    // Read receipt for last message from current user
+                                    ReadReceiptView(
+                                        message: message,
+                                        participants: participantIds,
+                                        currentUserId: currentUserId,
+                                        isLastFromCurrentUser: index == lastMessageFromCurrentUserIndex
+                                    )
+                                }
                                 .id(message.id)
                             }
                         }

@@ -59,6 +59,7 @@ struct ChatView: View {
                 MessageListView(
                     messages: viewModel.messages,
                     currentUserId: viewModel.currentUserId,
+                    participantIds: viewModel.participants.map { $0.id },
                     getSenderName: { message in // Added for PR-17
                         viewModel.getSenderName(for: message)
                     },
@@ -118,6 +119,14 @@ struct ChatView: View {
             UserProfileView(userId: recipientId)
         }
         .onAppear {
+            // Mark messages as delivered and read
+            Task {
+                let userId = AuthenticationService.shared.currentUser?.id ?? ""
+                try? await ReadReceiptService.shared.markMessagesAsDelivered(
+                    conversationId: viewModel.conversationId,
+                    userId: userId
+                )
+            }
             viewModel.markMessagesAsRead()
             // Track that user entered this conversation
             notificationService.currentConversationId = viewModel.conversationId

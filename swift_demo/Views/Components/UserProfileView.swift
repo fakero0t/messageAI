@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import Combine
 
 struct UserProfileView: View {
     let userId: String
@@ -13,6 +14,7 @@ struct UserProfileView: View {
     @State private var user: User?
     @State private var isLoading = true
     @State private var errorMessage: String?
+    @State private var cancellables = Set<AnyCancellable>()
     
     var body: some View {
         NavigationStack {
@@ -53,24 +55,6 @@ struct UserProfileView: View {
                             LabeledContent("Username", value: "@\(user.username)")
                         }
                         
-                        Section("Settings") {
-                            HStack {
-                                Text("Georgian Learning Mode")
-                                Spacer()
-                                if user.georgianLearningMode {
-                                    Image(systemName: "checkmark.circle.fill")
-                                        .foregroundColor(.green)
-                                    Text("Enabled")
-                                        .foregroundColor(.secondary)
-                                } else {
-                                    Image(systemName: "xmark.circle.fill")
-                                        .foregroundColor(.gray)
-                                    Text("Disabled")
-                                        .foregroundColor(.secondary)
-                                }
-                            }
-                        }
-                        
                         if let errorMessage = errorMessage {
                             Section {
                                 Text(errorMessage)
@@ -96,6 +80,10 @@ struct UserProfileView: View {
             .onAppear {
                 loadUserProfile()
             }
+            .onDisappear {
+                // Clean up listener
+                cancellables.removeAll()
+            }
         }
     }
     
@@ -109,6 +97,9 @@ struct UserProfileView: View {
                 await MainActor.run {
                     user = fetchedUser
                     isLoading = false
+                    
+                    // Start observing real-time status updates
+                    observeUserStatus()
                 }
             } catch {
                 print("❌ Error loading user profile: \(error)")
@@ -118,6 +109,22 @@ struct UserProfileView: View {
                 }
             }
         }
+    }
+    
+    private func observeUserStatus() {
+        print("👤 [UserProfileView] Setting up real-time status observer for user: \(userId)")
+        
+        UserService.shared.observeUserStatus(userId: userId)
+            .receive(on: DispatchQueue.main)
+            .sink { [userId] updatedUser in
+                guard let updatedUser = updatedUser else { return }
+                
+                user = updatedUser
+                print("🔄 [UserProfileView] Updated status for \(updatedUser.displayName): online=\(updatedUser.online)")
+            }
+            .store(in: &cancellables)
+        
+        print("✅ [UserProfileView] Real-time status observer active")
     }
 }
 

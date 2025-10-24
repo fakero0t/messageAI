@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import Combine
 
 struct GroupInfoView: View {
     let groupId: String
@@ -18,6 +19,7 @@ struct GroupInfoView: View {
     @State private var errorMessage: String?
     @State private var isLoading = true
     @State private var isSearching = false
+    @State private var cancellables = Set<AnyCancellable>()
     
     var body: some View {
         NavigationStack {
@@ -127,6 +129,10 @@ struct GroupInfoView: View {
             .onAppear {
                 loadGroupInfo()
             }
+            .onDisappear {
+                // Clean up listeners
+                cancellables.removeAll()
+            }
         }
     }
     
@@ -141,7 +147,7 @@ struct GroupInfoView: View {
                     try LocalStorageService.shared.fetchConversation(byId: groupId)
                 }
                 
-                // Load participants
+                // Load participants initially
                 if let conversation = conversation {
                     participants = []
                     for participantId in conversation.participantIds {
@@ -153,6 +159,11 @@ struct GroupInfoView: View {
                     // Check if current user is creator
                     let currentUserId = AuthenticationService.shared.currentUser?.id ?? ""
                     isCreator = try await GroupService.shared.isCreator(groupId: groupId, userId: currentUserId)
+                    
+                    // Start observing status updates for all participants
+                    await MainActor.run {
+                        observeParticipantStatuses()
+                    }
                 }
                 
                 isLoading = false
@@ -163,6 +174,31 @@ struct GroupInfoView: View {
                 isLoading = false
             }
         }
+    }
+    
+    private func observeParticipantStatuses() {
+        // Clear existing subscriptions
+        cancellables.removeAll()
+        
+        print("👥 [GroupInfoView] Setting up real-time status observers for \(participants.count) participants")
+        
+        // Subscribe to status updates for each participant
+        for participant in participants {
+            UserService.shared.observeUserStatus(userId: participant.id)
+                .receive(on: DispatchQueue.main)
+                .sink { [participant] updatedUser in
+                    guard let updatedUser = updatedUser else { return }
+                    
+                    // Update the participant in the array
+                    if let index = participants.firstIndex(where: { $0.id == participant.id }) {
+                        participants[index] = updatedUser
+                        print("🔄 [GroupInfoView] Updated status for \(updatedUser.displayName): online=\(updatedUser.online)")
+                    }
+                }
+                .store(in: &cancellables)
+        }
+        
+        print("✅ [GroupInfoView] Real-time status observers active")
     }
     
     private func addParticipant() {

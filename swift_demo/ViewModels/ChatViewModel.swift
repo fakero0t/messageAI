@@ -221,7 +221,11 @@ class ChatViewModel: ObservableObject {
             senderId: currentUserId,
             text: text,
             timestamp: Date(),
-            status: initialStatus
+            status: initialStatus,
+            readBy: [],
+            deliveredTo: [],
+            deliveredAt: nil,
+            readAt: nil
         )
         
         print("📤 [ChatViewModel] Created optimistic text message:")
@@ -252,7 +256,11 @@ class ChatViewModel: ObservableObject {
                     senderId: currentUserId,
                     text: text,
                     timestamp: Date(),
-                    status: .pending
+                    status: .pending,
+                    readBy: [],
+                    deliveredTo: [],
+                    deliveredAt: nil,
+                    readAt: nil
                 )
                 try await MainActor.run {
                     try localStorage.saveMessage(message)
@@ -327,7 +335,11 @@ class ChatViewModel: ObservableObject {
                     senderId: currentUserId,
                     text: text,
                     timestamp: Date(),
-                    status: .queued
+                    status: .queued,
+                    readBy: [],
+                    deliveredTo: [],
+                    deliveredAt: nil,
+                    readAt: nil
                 )
                 try await MainActor.run {
                     try localStorage.saveMessage(message)
@@ -383,6 +395,10 @@ class ChatViewModel: ObservableObject {
                     text: nil, // Image-only message
                     timestamp: Date(),
                     status: initialStatus,
+                    readBy: [],
+                    deliveredTo: [],
+                    deliveredAt: nil,
+                    readAt: nil,
                     imageLocalPath: imagePath.path,
                     imageWidth: dimensions.width,
                     imageHeight: dimensions.height

@@ -82,6 +82,11 @@ class FirestoreListenerService {
         let imageWidth = data["imageWidth"] as? Double
         let imageHeight = data["imageHeight"] as? Double
         
+        // Read receipts
+        let deliveredTo = data["deliveredTo"] as? [String] ?? []
+        let deliveredAt = (data["deliveredAt"] as? Timestamp)?.dateValue()
+        let readAt = (data["readAt"] as? Timestamp)?.dateValue()
+        
         return MessageSnapshot(
             id: id,
             conversationId: conversationId,
@@ -90,6 +95,9 @@ class FirestoreListenerService {
             timestamp: timestamp,
             status: status,
             readBy: readBy,
+            deliveredTo: deliveredTo,
+            deliveredAt: deliveredAt,
+            readAt: readAt,
             imageUrl: imageUrl,
             imageWidth: imageWidth,
             imageHeight: imageHeight
@@ -105,6 +113,11 @@ struct MessageSnapshot {
     let timestamp: Date
     let status: String
     let readBy: [String]
+    
+    // Read receipts
+    let deliveredTo: [String]
+    let deliveredAt: Date?
+    let readAt: Date?
     
     // PR-7: Image support
     let imageUrl: String?

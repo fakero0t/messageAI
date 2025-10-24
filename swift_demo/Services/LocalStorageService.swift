@@ -56,6 +56,12 @@ class LocalStorageService {
         return messages
     }
     
+    func fetchMessage(byId messageId: String) throws -> MessageEntity? {
+        let predicate = #Predicate<MessageEntity> { $0.id == messageId }
+        let descriptor = FetchDescriptor<MessageEntity>(predicate: predicate)
+        return try modelContext.fetch(descriptor).first
+    }
+    
     func updateMessageStatus(messageId: String, status: MessageStatus) throws {
         let predicate = #Predicate<MessageEntity> { $0.id == messageId }
         let descriptor = FetchDescriptor<MessageEntity>(predicate: predicate)
@@ -78,13 +84,29 @@ class LocalStorageService {
         }
     }
     
-    func updateMessage(messageId: String, status: MessageStatus, readBy: [String]) throws {
+    func updateMessage(
+        messageId: String,
+        status: MessageStatus,
+        readBy: [String],
+        deliveredTo: [String]? = nil,
+        deliveredAt: Date? = nil,
+        readAt: Date? = nil
+    ) throws {
         let predicate = #Predicate<MessageEntity> { $0.id == messageId }
         let descriptor = FetchDescriptor<MessageEntity>(predicate: predicate)
         
         if let message = try modelContext.fetch(descriptor).first {
             message.status = status
             message.readBy = readBy
+            if let deliveredTo = deliveredTo {
+                message.deliveredTo = deliveredTo
+            }
+            if let deliveredAt = deliveredAt {
+                message.deliveredAt = deliveredAt
+            }
+            if let readAt = readAt {
+                message.readAt = readAt
+            }
             try modelContext.save()
         }
     }

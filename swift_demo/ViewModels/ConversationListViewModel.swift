@@ -577,6 +577,9 @@ class ConversationListViewModel: ObservableObject {
             timestamp: (data["timestamp"] as? Timestamp)?.dateValue() ?? Date(),
             status: data["status"] as? String ?? "delivered",
             readBy: data["readBy"] as? [String] ?? [],
+            deliveredTo: data["deliveredTo"] as? [String] ?? [],
+            deliveredAt: (data["deliveredAt"] as? Timestamp)?.dateValue(),
+            readAt: (data["readAt"] as? Timestamp)?.dateValue(),
             imageUrl: data["imageUrl"] as? String,
             imageWidth: data["imageWidth"] as? Double,
             imageHeight: data["imageHeight"] as? Double
