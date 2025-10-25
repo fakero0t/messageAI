@@ -143,34 +143,6 @@ swift_demo/
 - **Observer** (Combine publishers)
 - **Repository** (Service layer)
 
-## 📚 Documentation
-
-- **[FIREBASE_SETUP.md](FIREBASE_SETUP.md)** - Complete Firebase configuration guide
-- **[FEATURES.md](FEATURES.md)** - Detailed feature documentation
-- **[tasks_v2_*.md](tasks_v2_1.md)** - Development task breakdown
-
-## 🔒 Security
-
-### Firebase Security Rules
-
-#### Firestore
-- Users can only read conversations they're a participant in
-- Users can only write their own messages
-- Message ownership validated server-side
-
-#### Realtime Database
-- Authenticated users can read typing indicators
-- Users can only write their own typing status
-- Auto-cleanup on disconnect
-
-#### Storage
-- Profile pictures: Max 5MB, users can only upload their own
-- Message images: Max 10MB, all authenticated users can upload
-- Only image files allowed
-- Filename validation for profile pictures
-
-See [FIREBASE_SETUP.md](FIREBASE_SETUP.md#security-best-practices) for details.
-
 ## ⚡ Performance
 
 ### Optimizations
@@ -186,18 +158,6 @@ See [FIREBASE_SETUP.md](FIREBASE_SETUP.md#security-best-practices) for details.
 - **Image upload:** <10s for 1MB on WiFi
 - **App launch:** <2s cold start
 - **Memory:** <150MB typical usage
-
-## 🐛 Known Issues & Limitations
-
-1. **Images:** Max 10MB per image, one image per message
-2. **Video:** Not supported yet
-3. **Image Editing:** No built-in editing tools
-4. **GIFs:** Static only (no animation)
-5. **Voice Messages:** Not implemented
-6. **Link Previews:** Not implemented
-7. **Message Reactions:** Not implemented
-
-See [GitHub Issues](link-to-issues) for tracking.
 
 ## 🛠️ Development
 
@@ -224,23 +184,9 @@ open swift_demo.xcodeproj
 - Descriptive variable names
 - Comments for complex logic
 
-### Contributing
-1. Fork the repository
-2. Create a feature branch (`feature/amazing-feature`)
-3. Commit your changes
-4. Push to the branch
-5. Open a Pull Request
-
 ## 📝 License
 
 This project is for educational purposes.
-
-## 📧 Support
-
-For questions or issues:
-- Open a [GitHub Issue](link-to-issues)
-- Check [FIREBASE_SETUP.md](FIREBASE_SETUP.md) for common setup problems
-- Review [FEATURES.md](FEATURES.md) for feature documentation
 
 ---
 
