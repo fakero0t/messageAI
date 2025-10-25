@@ -41,6 +41,10 @@ class PracticeViewModel: ObservableObject {
         return currentIndex < currentBatch.count - 1
     }
     
+    var hasReachedEnd: Bool {
+        return currentIndex >= currentBatch.count
+    }
+    
     var progress: (current: Int, total: Int) {
         return (currentIndex + 1, currentBatch.count)
     }
@@ -178,8 +182,7 @@ class PracticeViewModel: ObservableObject {
     
     /// Move to next question
     func nextQuestion() {
-        guard hasMoreQuestions else { return }
-        
+        // Allow advancing past last question to trigger completion
         currentIndex += 1
         selectedLetter = nil
         showResult = false
@@ -197,7 +200,7 @@ class PracticeViewModel: ObservableObject {
     
     /// Check if batch is completed
     func isBatchCompleted() -> Bool {
-        return isLastQuestion && showResult
+        return hasReachedEnd
     }
     
     /// Get completion statistics

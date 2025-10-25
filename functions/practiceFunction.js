@@ -90,11 +90,48 @@ function hasGeorgianScript(text) {
 }
 
 /**
- * Check if a word is likely a valid Georgian word
+ * PR7: Check if a word is validated (from cache)
+ * Queries the wordValidationCache to get validated words
+ * @param {string} word - Word to check
+ * @param {number} minConfidence - Minimum confidence threshold (default 0.60)
+ * @returns {Promise<boolean>} True if validated and meets confidence threshold
+ */
+async function isValidatedWord(word, minConfidence = 0.60) {
+  if (!word || word.length < 2 || word.length > 20) {
+    return false;
+  }
+  
+  try {
+    const normalized = word.toLowerCase().trim();
+    const doc = await db.collection('wordValidationCache').doc(normalized).get();
+    
+    if (!doc.exists) {
+      return false; // Not validated yet
+    }
+    
+    const data = doc.data();
+    
+    // Check if expired
+    if (data.expiresAt && data.expiresAt.toMillis() < Date.now()) {
+      return false; // Expired
+    }
+    
+    // Check if valid and meets confidence threshold
+    return data.valid === true && data.confidence >= minConfidence;
+    
+  } catch (error) {
+    console.error(`Error checking validation for "${word}": ${error.message}`);
+    return false; // Assume invalid on error
+  }
+}
+
+/**
+ * Check if a word is likely a valid Georgian word (basic heuristics)
+ * Used as fallback when validation cache is not available
  * - Must contain only Georgian characters (U+10A0 to U+10FF)
  * - Must be between 2-20 characters long (realistic Georgian word length)
  * - No mixed scripts, numbers, or special characters
- * - No excessive character repetition (e.g., "ააააა" likely an error)
+ * - No excessive character repetition (e.g., "ααααα" likely an error)
  */
 function isValidGeorgianWord(word) {
   if (!word || word.length < 2 || word.length > 20) {
@@ -128,11 +165,43 @@ function isValidGeorgianWord(word) {
 }
 
 /**
- * Extract valid Georgian words from text
+ * PR7: Extract valid Georgian words from text (async version with validation)
  * Filters out likely misspellings, mixed-script, or non-Georgian words
- * Note: Uses heuristics (not a full dictionary) to filter obvious errors
+ * Uses validation cache from PR1-PR5 for higher accuracy
  */
-function extractValidGeorgianWords(text) {
+async function extractValidGeorgianWords(text, minConfidence = 0.60) {
+  if (!text) return [];
+  
+  // Split by whitespace and punctuation
+  const words = text.split(/[\s.,!?;:()[\]{}"""''\-—]+/);
+  
+  // Filter to only valid Georgian words (basic heuristics first)
+  const basicValidWords = words.filter(word => isValidGeorgianWord(word));
+  
+  // Check validation cache for each word
+  const validatedWords = [];
+  for (const word of basicValidWords) {
+    const isValidated = await isValidatedWord(word, minConfidence);
+    if (isValidated) {
+      validatedWords.push(word);
+    }
+  }
+  
+  // Log filtering stats for debugging
+  if (words.length > 0) {
+    const heuristicFiltered = words.length - basicValidWords.length;
+    const validationFiltered = basicValidWords.length - validatedWords.length;
+    console.log(`Filtered words: ${heuristicFiltered} by heuristics, ${validationFiltered} by validation, ${validatedWords.length}/${words.length} kept`);
+  }
+  
+  return validatedWords;
+}
+
+/**
+ * Extract valid Georgian words from text (sync fallback)
+ * Uses only basic heuristics (for backward compatibility)
+ */
+function extractValidGeorgianWordsSync(text) {
   if (!text) return [];
   
   // Split by whitespace and punctuation
@@ -141,31 +210,57 @@ function extractValidGeorgianWords(text) {
   // Filter to only valid Georgian words using heuristics
   const validWords = words.filter(word => isValidGeorgianWord(word));
   
-  // Log filtering stats for debugging
-  if (words.length > 0 && validWords.length < words.length) {
-    const filtered = words.length - validWords.length;
-    console.log(`Filtered ${filtered}/${words.length} words from message`);
-  }
-  
   return validWords;
 }
 
 /**
- * Build conversation summaries for GPT-4 context
- * Only includes valid, correctly-spelled Georgian words
+ * PR7: Get validated words pool for practice generation
+ * Returns a list of validated words that can be suggested to GPT
+ * @param {number} minConfidence - Minimum confidence threshold
+ * @param {number} limit - Maximum number of words to return
+ * @returns {Promise<Array<string>>} Array of validated words
  */
-function buildConversationContext(conversations) {
+async function getValidatedWordsPool(minConfidence = 0.70, limit = 100) {
+  try {
+    const snapshot = await db.collection('wordValidationCache')
+      .where('valid', '==', true)
+      .where('confidence', '>=', minConfidence)
+      .orderBy('confidence', 'desc')
+      .limit(limit)
+      .get();
+    
+    if (snapshot.empty) {
+      return [];
+    }
+    
+    const words = snapshot.docs.map(doc => doc.data().word);
+    console.log(`📚 [Practice] Retrieved ${words.length} validated words (confidence >= ${minConfidence}) for practice pool`);
+    
+    return words;
+    
+  } catch (error) {
+    console.error('Error fetching validated words pool:', error);
+    return [];
+  }
+}
+
+/**
+ * PR7: Build conversation summaries for GPT-4 context
+ * Only includes validated Georgian words (confidence >= 0.60)
+ */
+async function buildConversationContext(conversations, minConfidence = 0.60) {
   let context = '';
   let totalWordsIncluded = 0;
   let totalMessagesProcessed = 0;
   
-  conversations.forEach((conv, index) => {
+  for (const [index, conv] of conversations.entries()) {
     context += `\n--- Conversation ${index + 1} ---\n`;
-    conv.messages.forEach(msg => {
+    
+    for (const msg of conv.messages) {
       totalMessagesProcessed++;
       
-      // Extract only valid Georgian words from the message
-      const validWords = extractValidGeorgianWords(msg.text);
+      // Extract only validated Georgian words from the message
+      const validWords = await extractValidGeorgianWords(msg.text, minConfidence);
       
       // Only include if there are valid words
       if (validWords.length > 0) {
@@ -173,19 +268,21 @@ function buildConversationContext(conversations) {
         // Rejoin words with spaces
         context += `${validWords.join(' ')}\n`;
       }
-    });
-  });
+    }
+  }
   
-  console.log(`Built context: ${totalWordsIncluded} valid words from ${totalMessagesProcessed} messages`);
+  console.log(`Built context: ${totalWordsIncluded} validated words (confidence >= ${minConfidence}) from ${totalMessagesProcessed} messages`);
   
   return context;
 }
 
 /**
- * Call GPT-4 to generate personalized practice
+ * PR7: Call GPT-4 to generate personalized practice
+ * Uses validated words from user's conversation history
  */
 async function generatePersonalizedPractice(conversations, apiKey) {
-  const contextStr = buildConversationContext(conversations);
+  // Build context with validated words only (confidence >= 0.70 for practice)
+  const contextStr = await buildConversationContext(conversations, 0.70);
   
   const systemPrompt = `You are a Georgian language teacher creating personalized spelling practice for an English speaker learning Georgian.
 
@@ -288,6 +385,38 @@ CRITICAL VALIDATION RULES:
   const userPrompt = 'Generate 15 spelling practice items using common, correctly-spelled Georgian words that beginners should learn. Focus on commonly confused letter pairs.';
   
   return await callGPT4(systemPrompt, userPrompt, apiKey);
+}
+
+/**
+ * PR7: Validate practice batch words
+ * Checks each word in the practice batch against validation cache
+ * Filters out invalid words (confidence < 0.60)
+ */
+async function validatePracticeBatch(batch, minConfidence = 0.60) {
+  const validatedBatch = [];
+  let removedCount = 0;
+  
+  for (const item of batch) {
+    if (!item.word) {
+      removedCount++;
+      console.log(`⚠️ [Practice] Removed item with missing word`);
+      continue;
+    }
+    
+    // Check if word is validated
+    const isValidated = await isValidatedWord(item.word, minConfidence);
+    
+    if (isValidated) {
+      validatedBatch.push(item);
+    } else {
+      removedCount++;
+      console.log(`⚠️ [Practice] Removed unvalidated word: "${item.word}"`);
+    }
+  }
+  
+  console.log(`📊 [Practice] Validation: ${validatedBatch.length} kept, ${removedCount} removed`);
+  
+  return validatedBatch;
 }
 
 /**
@@ -574,6 +703,15 @@ exports.generatePractice = functions
         console.log(`User ${userId} has ${count} messages - generating personalized practice`);
         batch = await generatePersonalizedPractice(conversations, apiKey);
         source = 'personalized';
+      }
+      
+      // PR7: Validate practice batch words (filter out unvalidated words)
+      console.log(`🔍 [Practice] Validating ${batch.length} practice items...`);
+      batch = await validatePracticeBatch(batch, 0.60);
+      
+      // If too many words were filtered out, we might have < 15 items
+      if (batch.length < 10) {
+        console.warn(`⚠️ [Practice] Only ${batch.length} validated items (expected 15) - may need to regenerate or lower threshold`);
       }
       
       // Store in cache

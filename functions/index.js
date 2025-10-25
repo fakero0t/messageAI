@@ -12,6 +12,9 @@ const { suggestEnglishToGeorgian } = require('./englishTranslationFunction');
 // AI V4: Import practice function
 const { generatePractice } = require('./practiceFunction');
 
+// PR1: Import word validation module
+const { trackWordUsage, getWordStats } = require('./wordValidation');
+
 // OpenAI key helper
 function getOpenAIKey() {
   try {
@@ -573,3 +576,202 @@ exports.suggestEnglishToGeorgian = suggestEnglishToGeorgian;
 
 // AI V4: Export practice function
 exports.generatePractice = generatePractice;
+
+// ============================================================================
+// PR0: Async Message Validation Hook
+// ============================================================================
+
+// Rate limiting: 50 words per user per minute
+const VALIDATION_RATE_LIMIT = 50;
+const userValidationCounts = new Map();
+
+/**
+ * Check if Georgian text exists
+ */
+function hasGeorgianScript(text) {
+  const georgianRegex = /[\u10A0-\u10FF]/;
+  return georgianRegex.test(text);
+}
+
+/**
+ * Rate limit validation per user
+ */
+function checkValidationRateLimit(userId) {
+  const now = Date.now();
+  const key = `${userId}_${Math.floor(now / 60000)}`; // per minute
+  
+  const count = userValidationCounts.get(key) || 0;
+  if (count >= VALIDATION_RATE_LIMIT) {
+    console.log(`⚠️ [RateLimit] User ${userId} hit rate limit (${count}/${VALIDATION_RATE_LIMIT})`);
+    return false;
+  }
+  
+  userValidationCounts.set(key, count + 1);
+  
+  // Cleanup old entries (keep memory usage low)
+  if (userValidationCounts.size > 1000) {
+    const cutoff = Math.floor(now / 60000) - 5; // 5 minutes ago
+    for (const [k] of userValidationCounts) {
+      if (k.endsWith(String(cutoff)) || parseInt(k.split('_')[1]) < cutoff) {
+        userValidationCounts.delete(k);
+      }
+    }
+  }
+  
+  return true;
+}
+
+/**
+ * Get cached validation result
+ */
+async function getCachedValidation(word) {
+  const normalized = word.toLowerCase().trim();
+  const doc = await db.collection('wordValidationCache').doc(normalized).get();
+  
+  if (!doc.exists) {
+    return null;
+  }
+  
+  const data = doc.data();
+  
+  // Check if expired (30 days)
+  if (data.expiresAt && data.expiresAt.toMillis() < Date.now()) {
+    console.log(`🗑️ [Cache] Expired: ${word}`);
+    return null;
+  }
+  
+  return data;
+}
+
+/**
+ * Cache validation result
+ */
+async function cacheValidationResult(word, validationResult) {
+  const normalized = word.toLowerCase().trim();
+  const now = Date.now();
+  const expiresAt = admin.firestore.Timestamp.fromMillis(now + 30 * 24 * 60 * 60 * 1000); // 30 days
+  
+  await db.collection('wordValidationCache').doc(normalized).set({
+    word: word,
+    valid: validationResult.valid,
+    confidence: validationResult.confidence,
+    source: validationResult.source,
+    signals: validationResult.signals || [],
+    timestamp: admin.firestore.FieldValue.serverTimestamp(),
+    expiresAt: expiresAt,
+    userId: validationResult.userId || 'system'
+  }, { merge: true });
+}
+
+/**
+ * Extract Georgian words from text
+ */
+function extractGeorgianWords(text) {
+  if (!text || !hasGeorgianScript(text)) {
+    return [];
+  }
+  
+  // Split by whitespace and punctuation
+  const words = text.split(/[\s.,!?;:()[\]{}"""''\-—]+/);
+  
+  // Filter to only Georgian words
+  const georgianWords = words.filter(word => {
+    if (word.length < 2 || word.length > 20) return false;
+    
+    // Only Georgian characters
+    const georgianOnlyRegex = /^[\u10A0-\u10FF]+$/;
+    return georgianOnlyRegex.test(word);
+  });
+  
+  return georgianWords;
+}
+
+/**
+ * Firestore trigger: Validate Georgian words when message is created
+ * Runs in background, doesn't block message delivery
+ * 
+ * NOTE: Depends on validateGeorgianWord() from wordValidation.js (PR1-PR5)
+ * This function will work once PR1-PR5 are deployed
+ */
+exports.onMessageCreated = functions.firestore
+  .document('messages/{messageId}')
+  .onCreate(async (snap, context) => {
+    try {
+      const message = snap.data();
+      const messageId = context.params.messageId;
+      
+      // Skip if no text or no sender
+      if (!message.text || !message.senderId) {
+        return;
+      }
+      
+      // Skip if no Georgian text
+      if (!hasGeorgianScript(message.text)) {
+        return;
+      }
+      
+      const userId = message.senderId;
+      
+      // Check rate limit
+      if (!checkValidationRateLimit(userId)) {
+        console.log(`⚠️ [Validation] Skipped due to rate limit: ${messageId}`);
+        return;
+      }
+      
+      // Extract Georgian words
+      const words = extractGeorgianWords(message.text);
+      
+      if (words.length === 0) {
+        return;
+      }
+      
+      console.log(`🔍 [Validation] Processing ${words.length} words from message ${messageId}`);
+      
+      let validated = 0;
+      let cached = 0;
+      let failed = 0;
+      
+      // Validate each word
+      for (const word of words) {
+        try {
+          // PR1: Track word usage (builds crowd signal data)
+          await trackWordUsage(word, userId);
+          
+          // Check if already cached
+          const cachedResult = await getCachedValidation(word);
+          if (cachedResult) {
+            cached++;
+            console.log(`✅ [Cache] Hit: ${word} (confidence: ${cachedResult.confidence.toFixed(2)})`);
+            continue;
+          }
+          
+          // PR5: Use master validation function
+          const { validateGeorgianWord } = require('./wordValidation');
+          const apiKey = getOpenAIKey();
+          const result = await validateGeorgianWord(word, userId, apiKey);
+          
+          // Cache the validation result
+          await cacheValidationResult(word, result);
+          validated++;
+          
+          console.log(`✅ [Validation] Word validated: ${word}, valid: ${result.valid}, confidence: ${result.confidence.toFixed(2)}, source: ${result.source}, time: ${result.validationTime}ms`);
+          
+        } catch (error) {
+          failed++;
+          console.error(`❌ [Validation] Failed for "${word}": ${error.message}`);
+          // Skip this word - exclude from practice
+          // Don't cache failed validations
+        }
+      }
+      
+      console.log(`📊 [Validation] Complete for message ${messageId}: ${validated} validated, ${cached} cached, ${failed} failed`);
+      
+    } catch (error) {
+      console.error(`❌ [Validation] Error in onMessageCreated: ${error.message}`);
+      // Don't throw - this is a background trigger, don't block message delivery
+    }
+  });
+
+// Export cache functions for use in other modules (PR7)
+exports.getCachedValidation = getCachedValidation;
+exports.cacheValidationResult = cacheValidationResult;

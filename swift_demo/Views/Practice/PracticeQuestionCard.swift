@@ -15,7 +15,7 @@ struct PracticeQuestionCard: View {
     let selectedLetter: String?
     let showResult: Bool
     let onSelect: (String) -> Void
-    let onNext: (() -> Void)?
+    let onNext: () -> Void
     
     var body: some View {
         VStack(spacing: 24) {
@@ -73,10 +73,8 @@ struct PracticeQuestionCard: View {
             .padding(.top, 8)
             
             // Next button (only shown in result state)
-            if showResult, let onNext = onNext {
-                Button(action: {
-                    onNext()
-                }) {
+            if showResult {
+                Button(action: onNext) {
                     Text("Next")
                         .font(.system(size: 18, weight: .semibold))
                         .foregroundColor(.white)

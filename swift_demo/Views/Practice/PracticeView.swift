@@ -142,9 +142,9 @@ struct PracticeQuestionsView: View {
                         onSelect: { letter in
                             viewModel.submitAnswer(letter)
                         },
-                        onNext: viewModel.hasMoreQuestions ? {
+                        onNext: {
                             viewModel.nextQuestion()
-                        } : nil
+                        }
                     )
                 }
             }

@@ -23,6 +23,22 @@
         { "fieldPath": "participants", "arrayConfig": "CONTAINS" },
         { "fieldPath": "lastMessageTime", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "wordStats",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "lastSeen", "order": "DESCENDING" },
+        { "fieldPath": "count", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "wordValidationCache",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "valid", "order": "ASCENDING" },
+        { "fieldPath": "confidence", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []
