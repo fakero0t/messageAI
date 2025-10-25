@@ -10,6 +10,7 @@ import SwiftUI
 struct NetworkStatusView: View {
     @ObservedObject var networkMonitor = NetworkMonitor.shared
     @ObservedObject var queueService = MessageQueueService.shared
+    @State private var isRetrying = false // Prevent double-tap
     
     var body: some View {
         if shouldShow {
@@ -24,6 +25,11 @@ struct NetworkStatusView: View {
                 if queueService.isProcessing {
                     ProgressView()
                         .scaleEffect(0.7)
+                } else if queueService.queueCount > 0 {
+                    // Show tap hint when there are queued messages
+                    Image(systemName: "hand.tap")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
                 }
             }
             .padding(.horizontal, 12)
@@ -31,6 +37,10 @@ struct NetworkStatusView: View {
             .background(backgroundColor)
             .cornerRadius(16)
             .transition(.move(edge: .top).combined(with: .opacity))
+            .contentShape(Rectangle()) // Make entire area tappable
+            .onTapGesture {
+                handleTap()
+            }
         }
     }
     
@@ -98,6 +108,24 @@ struct NetworkStatusView: View {
             return Color.yellow.opacity(0.1)
         case .good, .excellent:
             return Color(.systemGray6)
+        }
+    }
+    
+    private func handleTap() {
+        guard queueService.queueCount > 0 else { return }
+        guard !isRetrying else { 
+            print("⏳ Already retrying, ignoring tap")
+            return 
+        }
+        
+        print("👆 User tapped network status - forcing queue processing")
+        isRetrying = true
+        
+        Task {
+            await queueService.forceProcessQueue()
+            // Wait a bit before allowing another tap
+            try? await Task.sleep(nanoseconds: 3_000_000_000) // 3 seconds
+            isRetrying = false
         }
     }
 }

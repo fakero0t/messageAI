@@ -21,6 +21,8 @@ class MessageQueueService: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     
     private let maxRetries = 5
+    private var lastProcessingTime: Date?
+    private let minimumProcessingInterval: TimeInterval = 2.0 // Debounce: wait 2 seconds between processing attempts
     
     private init() {
         setupNetworkObserver()
@@ -73,8 +75,21 @@ class MessageQueueService: ObservableObject {
             return
         }
         
+        // Debounce: prevent rapid-fire processing
+        if let lastTime = lastProcessingTime {
+            let timeSinceLastProcessing = Date().timeIntervalSince(lastTime)
+            if timeSinceLastProcessing < minimumProcessingInterval {
+                print("⏱️ Debouncing: Last processed \(String(format: "%.1f", timeSinceLastProcessing))s ago, waiting...")
+                return
+            }
+        }
+        
         isProcessing = true
-        defer { isProcessing = false }
+        lastProcessingTime = Date()
+        defer { 
+            isProcessing = false 
+            print("🏁 Processing complete, isProcessing set to false")
+        }
         
         print("🔄 Processing message queue...")
         
@@ -82,24 +97,46 @@ class MessageQueueService: ObservableObject {
             let queuedMessages = try localStorage.getQueuedMessages()
             print("📋 Found \(queuedMessages.count) queued messages")
             
-            for queuedMessage in queuedMessages {
+            guard !queuedMessages.isEmpty else {
+                print("✅ Queue is empty")
+                updateQueueCount()
+                return
+            }
+            
+            // Process messages one at a time to avoid overwhelming Firestore
+            var successCount = 0
+            var failedCount = 0
+            
+            for (index, queuedMessage) in queuedMessages.enumerated() {
+                print("📤 Processing message \(index + 1)/\(queuedMessages.count): \(queuedMessage.id.prefix(8))")
+                
                 // Check retry count
                 if queuedMessage.retryCount >= maxRetries {
                     print("❌ Max retries reached for message: \(queuedMessage.id)")
                     try markMessageAsFailed(queuedMessage)
+                    failedCount += 1
                     continue
                 }
                 
                 // PR-11: Handle image messages vs text messages
+                let success: Bool
                 if queuedMessage.isImageMessage {
-                    await processImageMessage(queuedMessage)
+                    success = await processImageMessage(queuedMessage)
                 } else {
-                    await processTextMessage(queuedMessage)
+                    success = await processTextMessage(queuedMessage)
                 }
+                
+                if success {
+                    successCount += 1
+                } else {
+                    failedCount += 1
+                }
+                
+                // Update count after each message so UI shows progress
+                updateQueueCount()
             }
             
-            updateQueueCount()
-            print("✅ Queue processing complete")
+            print("✅ Queue processing complete: \(successCount) sent, \(failedCount) failed")
             
         } catch {
             print("❌ Queue processing error: \(error)")
@@ -107,40 +144,46 @@ class MessageQueueService: ObservableObject {
     }
     
     // PR-11: Process text message from queue
-    private func processTextMessage(_ queuedMessage: QueuedMessageEntity) async {
+    // Returns true if successful, false if failed
+    private func processTextMessage(_ queuedMessage: QueuedMessageEntity) async -> Bool {
         guard let text = queuedMessage.text else {
             print("⚠️ Text message has no text content")
             try? markMessageAsFailed(queuedMessage)
-            return
+            return false
         }
         
         do {
-            // Extract recipient ID from conversation ID
             let conversationId = queuedMessage.conversationId
+            let currentUserId = AuthenticationService.shared.currentUser?.id ?? ""
+            
+            // Extract recipient ID from conversation ID
+            // For one-on-one: conversationId = "userId1_userId2"
+            // For groups: conversationId = custom group ID (doesn't follow pattern)
+            var recipientId = ""
             let participants = conversationId.split(separator: "_").map(String.init)
             
-            guard participants.count == 2 else {
-                print("⚠️ Invalid conversation ID format")
-                return
+            if participants.count == 2 {
+                // One-on-one chat
+                recipientId = participants.first { $0 != currentUserId } ?? ""
+                print("📤 Sending queued message (1-on-1): \(queuedMessage.id.prefix(8))")
+            } else {
+                // Group chat - recipientId can be empty
+                print("📤 Sending queued message (group): \(queuedMessage.id.prefix(8))")
             }
             
-            let currentUserId = AuthenticationService.shared.currentUser?.id ?? ""
-            let recipientId = participants.first { $0 != currentUserId } ?? ""
-            
-            print("📤 Attempting to send queued text message: \(queuedMessage.id)")
-            
-            // Attempt to send
+            // Attempt to send (use noRetry policy since queue has its own retry logic)
             try await messageService.sendToFirestore(
                 messageId: queuedMessage.id,
                 text: text,
                 conversationId: queuedMessage.conversationId,
                 senderId: currentUserId,
-                recipientId: recipientId
+                recipientId: recipientId,
+                retryPolicy: .noRetry
             )
             
             // Success - remove from queue
             try localStorage.removeQueuedMessage(queuedMessage.id)
-            print("✅ Queued text message sent successfully: \(queuedMessage.id)")
+            print("   ✅ Sent & removed from queue")
             
             // Update message status to delivered
             try localStorage.updateMessageStatus(
@@ -148,19 +191,23 @@ class MessageQueueService: ObservableObject {
                 status: .delivered
             )
             
+            return true
+            
         } catch {
             // Failed - increment retry count
-            print("❌ Failed to send queued text message \(queuedMessage.id): \(error)")
+            print("   ❌ Failed: \(error.localizedDescription)")
             try? localStorage.incrementRetryCount(messageId: queuedMessage.id)
+            return false
         }
     }
     
     // PR-11: Process image message from queue
-    private func processImageMessage(_ queuedMessage: QueuedMessageEntity) async {
+    // Returns true if successful, false if failed
+    private func processImageMessage(_ queuedMessage: QueuedMessageEntity) async -> Bool {
         guard let imageLocalPath = queuedMessage.imageLocalPath else {
             print("⚠️ Image message has no local path")
             try? markMessageAsFailed(queuedMessage)
-            return
+            return false
         }
         
         print("📸 Processing queued image message: \(queuedMessage.id)")
@@ -169,7 +216,7 @@ class MessageQueueService: ObservableObject {
         guard let image = try? ImageFileManager.shared.loadImage(withId: queuedMessage.id) else {
             print("❌ Failed to load image from local storage")
             try? markMessageAsFailed(queuedMessage)
-            return
+            return false
         }
         
         do {
@@ -221,9 +268,12 @@ class MessageQueueService: ObservableObject {
             try? ImageFileManager.shared.deleteImage(withId: queuedMessage.id)
             print("🗑️ Cleaned up local image file")
             
+            return true
+            
         } catch {
             print("❌ Failed to send queued image message \(queuedMessage.id): \(error)")
             try? localStorage.incrementRetryCount(messageId: queuedMessage.id)
+            return false
         }
     }
     
@@ -243,6 +293,32 @@ class MessageQueueService: ObservableObject {
         } catch {
             queueCount = 0
         }
+    }
+    
+    /// Force process the queue immediately (bypasses debouncing) - useful for manual retry
+    func forceProcessQueue() async {
+        guard !isProcessing else {
+            print("⚠️ Queue already processing")
+            return
+        }
+        
+        print("🔄 Force processing queue (bypassing debounce)...")
+        lastProcessingTime = nil // Reset debounce timer
+        await processQueue()
+    }
+    
+    /// Clear all stuck messages that have exceeded max retries
+    func clearFailedMessages() throws {
+        let queuedMessages = try localStorage.getQueuedMessages()
+        var clearedCount = 0
+        
+        for message in queuedMessages where message.retryCount >= maxRetries {
+            try markMessageAsFailed(message)
+            clearedCount += 1
+        }
+        
+        updateQueueCount()
+        print("🗑️ Cleared \(clearedCount) failed messages from queue")
     }
     
     private func setupNetworkObserver() {

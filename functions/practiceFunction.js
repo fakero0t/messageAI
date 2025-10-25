@@ -297,7 +297,7 @@ Analyze the user's Georgian vocabulary for letter confusion patterns:
 3. Letters they overuse incorrectly
 4. Common misspellings
 
-Generate 15 practice items focusing on these problematic letters. Each item should:
+Generate 15 practice items focusing on these problematic letters (will be filtered to 10 best items). Each item should:
 - Prioritize words from the user's conversation context when available
 - If context is insufficient, supplement with common, correctly-spelled Georgian words that beginners should learn
 - Use ONLY correctly spelled, real Georgian words from standard vocabulary
@@ -332,7 +332,7 @@ CRITICAL VALIDATION RULES:
 - Use only Georgian script (Unicode U+10A0 to U+10FF)
 - Focus on letters user struggles with based on their messages (or common confusion pairs if supplementing)
 - Keep explanations brief and helpful (under 80 characters)
-- Return exactly 15 items`;
+- Return exactly 15 items (will be validated and trimmed to 10)`;
 
   const userPrompt = 'Analyze the conversation history and generate 15 personalized spelling practice items. If the vocabulary context is limited, supplement with correctly-spelled common Georgian words that beginners should learn. Focus on letters the user struggles with or commonly confused letter pairs.';
   
@@ -346,7 +346,7 @@ async function generateGenericPractice(apiKey) {
   const systemPrompt = `You are a Georgian language teacher creating spelling practice for an English speaker learning Georgian.
 
 TASK:
-Generate 15 practice items using common Georgian words suitable for beginners.
+Generate 15 practice items using common Georgian words suitable for beginners (will be filtered to 10 best items).
 
 Each item should:
 - Use ONLY correctly spelled, real Georgian words from standard vocabulary
@@ -380,7 +380,7 @@ CRITICAL VALIDATION RULES:
 - Use only Georgian script (Unicode U+10A0 to U+10FF)
 - Focus on commonly confused letters (ი/უ, ა/ო, ე/ი, ბ/დ, გ/ყ, etc.)
 - Keep explanations brief and helpful (under 80 characters)
-- Return exactly 15 items`;
+- Return exactly 15 items (will be validated and trimmed to 10)`;
 
   const userPrompt = 'Generate 15 spelling practice items using common, correctly-spelled Georgian words that beginners should learn. Focus on commonly confused letter pairs.';
   
@@ -709,9 +709,30 @@ exports.generatePractice = functions
       console.log(`🔍 [Practice] Validating ${batch.length} practice items...`);
       batch = await validatePracticeBatch(batch, 0.60);
       
-      // If too many words were filtered out, we might have < 15 items
-      if (batch.length < 10) {
-        console.warn(`⚠️ [Practice] Only ${batch.length} validated items (expected 15) - may need to regenerate or lower threshold`);
+      // Always return exactly 10 items
+      const TARGET_ITEMS = 10;
+      
+      if (batch.length < TARGET_ITEMS) {
+        console.warn(`⚠️ [Practice] Only ${batch.length} validated items - regenerating with generic fallback`);
+        // If not enough validated items, generate generic practice to fill the gap
+        const genericBatch = await generateGenericPractice(apiKey);
+        const validatedGeneric = await validatePracticeBatch(genericBatch, 0.60);
+        
+        // Combine and take first 10
+        batch = [...batch, ...validatedGeneric].slice(0, TARGET_ITEMS);
+        console.log(`✅ [Practice] Combined batch: ${batch.length} items`);
+      } else if (batch.length > TARGET_ITEMS) {
+        // If too many items, trim to exactly 10
+        batch = batch.slice(0, TARGET_ITEMS);
+        console.log(`✂️ [Practice] Trimmed to ${TARGET_ITEMS} items`);
+      }
+      
+      // Final check - if still not enough, throw error
+      if (batch.length < TARGET_ITEMS) {
+        throw new functions.https.HttpsError(
+          'internal',
+          `Unable to generate ${TARGET_ITEMS} validated practice items. Please try again later.`
+        );
       }
       
       // Store in cache

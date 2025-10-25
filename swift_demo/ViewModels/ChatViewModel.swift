@@ -862,12 +862,10 @@ class ChatViewModel: ObservableObject {
                 
                 print(isConnected ? "🌐 Network connected" : "📵 Network disconnected")
                 
-                // Process queue when coming back online
+                // MessageQueueService handles queue processing automatically via its own network observer
+                // Just reload messages to show updated status
                 if isConnected {
-                    Task {
-                        await self.queueService.processQueue()
-                        self.loadLocalMessages()
-                    }
+                    self.loadLocalMessages()
                 }
             }
             .store(in: &cancellables)

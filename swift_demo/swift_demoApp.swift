@@ -8,14 +8,17 @@
 import SwiftUI
 import SwiftData
 import FirebaseCore
-import FirebaseAppCheck
+// import FirebaseAppCheck // Temporarily disabled - enable when ready to use App Check
 
 class AppDelegate: NSObject, UIApplicationDelegate {
   func application(_ application: UIApplication,
                    didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
     print("🎉🎉🎉 APP IS LAUNCHING WITH NEW CODE! 🎉🎉🎉")
     
-    // Configure App Check for debug mode in simulator
+    // App Check temporarily disabled to reduce console noise during development
+    // To enable: uncomment import above and this block, then enable API at:
+    // https://console.developers.google.com/apis/api/firebaseappcheck.googleapis.com/overview?project=273107116651
+    /*
     #if targetEnvironment(simulator)
     let providerFactory = AppCheckDebugProviderFactory()
     AppCheck.setAppCheckProviderFactory(providerFactory)
@@ -25,6 +28,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     let providerFactory = AppCheckDebugProviderFactory() // Can switch to DeviceCheckProviderFactory in production
     AppCheck.setAppCheckProviderFactory(providerFactory)
     #endif
+    */
     
     FirebaseApp.configure()
     print("✅ Firebase configured successfully")
@@ -38,6 +42,7 @@ struct swift_demoApp: App {
     @StateObject private var authViewModel = AuthViewModel()
     @StateObject private var notificationService = NotificationService.shared
     @StateObject private var inAppNotificationManager = InAppNotificationManager.shared
+    @State private var hasRunLaunchTasks = false // Prevent re-running
 
     init() {
         // Initialize network monitoring
@@ -57,6 +62,13 @@ struct swift_demoApp: App {
                     .environmentObject(inAppNotificationManager)
                     .tint(.georgianRed)
                     .task {
+                        // Only run once per app session
+                        guard !hasRunLaunchTasks else {
+                            print("⏭️ Launch tasks already completed, skipping")
+                            return
+                        }
+                        hasRunLaunchTasks = true
+                        
                         // Request notification permissions
                         notificationService.requestAuthorization()
                         

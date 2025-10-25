@@ -21,12 +21,13 @@ class MessageService {
         text: String,
         conversationId: String,
         senderId: String,
-        recipientId: String
+        recipientId: String,
+        retryPolicy: RetryPolicy = .default
     ) async throws {
         print("☁️ Sending to Firestore: \(messageId)")
 
         // Wrap in retry logic for resilience
-        try await retryService.executeWithRetry(policy: .default) {
+        try await retryService.executeWithRetry(policy: retryPolicy) {
             let messageData: [String: Any] = [
                 "id": messageId,
                 "conversationId": conversationId,

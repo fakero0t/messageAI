@@ -25,9 +25,9 @@ class FirestoreRetryService {
                 // Attempt the operation
                 let result = try await operation()
                 
-                // Success!
+                // Success! (only log if it took multiple attempts)
                 if attempt > 0 {
-                    print("✅ Operation succeeded on attempt \(attempt + 1)")
+                    print("   ✅ Succeeded on retry \(attempt + 1)")
                 }
                 return result
                 
@@ -36,21 +36,27 @@ class FirestoreRetryService {
                 
                 // Check if we should retry
                 guard policy.shouldRetry(attempt: attempt, error: error) else {
-                    print("🚫 Error not retryable: \(error.localizedDescription)")
+                    // Non-retryable error (only log on first attempt)
+                    if attempt == 0 {
+                        print("   🚫 Non-retryable error: \(error.localizedDescription)")
+                    }
                     throw error
                 }
                 
-                // Calculate delay with exponential backoff
-                let delay = policy.delay(forAttempt: attempt)
-                print("⏳ Retry attempt \(attempt + 1)/\(policy.maxRetries) after \(String(format: "%.1f", delay))s")
+                // Only log retries, not the first attempt
+                if attempt > 0 {
+                    let delay = policy.delay(forAttempt: attempt)
+                    print("   ⏳ Retry \(attempt + 1)/\(policy.maxRetries) in \(String(format: "%.1f", delay))s")
+                }
                 
                 // Wait before retrying
+                let delay = policy.delay(forAttempt: attempt)
                 try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
             }
         }
         
-        // All retries exhausted
-        print("❌ All \(policy.maxRetries) retry attempts exhausted")
+        // All retries exhausted (only log once)
+        print("   ❌ Failed after \(policy.maxRetries) attempts")
         throw lastError ?? NSError(
             domain: "FirestoreRetryService",
             code: -1,

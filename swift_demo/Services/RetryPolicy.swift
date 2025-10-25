@@ -34,6 +34,14 @@ struct RetryPolicy {
         jitterFactor: 0.2
     )
     
+    // For message queue: single attempt only (queue has its own retry logic)
+    static let noRetry = RetryPolicy(
+        maxRetries: 1,
+        baseDelay: 0.0,
+        maxDelay: 0.0,
+        jitterFactor: 0.0
+    )
+    
     /// Calculate delay for a given retry attempt with exponential backoff and jitter
     func delay(forAttempt attempt: Int) -> TimeInterval {
         // Exponential backoff: baseDelay * 2^attempt
