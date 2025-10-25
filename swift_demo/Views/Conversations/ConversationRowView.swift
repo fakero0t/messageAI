@@ -19,10 +19,10 @@ struct ConversationRowView: View {
                 // Group icon (no avatar, just colored circle with icon)
                 ZStack {
                     Circle()
-                        .fill(Color.blue.opacity(0.2))
+                        .fill(Color.georgianRed.opacity(0.2))
                         .frame(width: AvatarView.sizeMedium, height: AvatarView.sizeMedium)
                     Image(systemName: "person.3.fill")
-                        .foregroundColor(.blue)
+                        .foregroundColor(.georgianRed)
                 }
             } else {
                 // User avatar with profile picture support
@@ -63,7 +63,7 @@ struct ConversationRowView: View {
                             .foregroundColor(.white)
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
-                            .background(Color.blue)
+                            .background(Color.georgianRed)
                             .clipShape(Capsule())
                     }
                 }
@@ -72,7 +72,7 @@ struct ConversationRowView: View {
         .padding(.vertical, 4)
         .listRowBackground(
             hasUnreadMessages 
-                ? Color.blue.opacity(0.05) 
+                ? Color.georgianRed.opacity(0.05) 
                 : Color.clear
         )
         .task {

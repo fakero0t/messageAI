@@ -31,7 +31,7 @@ struct MessageInputView: View {
             Button(action: { showingImageSource = true }) {
                 Image(systemName: "photo")
                     .font(.system(size: 24))
-                    .foregroundColor(.blue)
+                    .foregroundColor(.georgianRed)
             }
             .disabled(onSendImage == nil) // Disable if no image handler
             
@@ -63,7 +63,7 @@ struct MessageInputView: View {
             }) {
                 Image(systemName: "arrow.up.circle.fill")
                     .font(.system(size: 32))
-                    .foregroundColor((text.isEmpty || disableSend) ? .gray : .blue)
+                    .foregroundColor((text.isEmpty || disableSend) ? .gray : .georgianRed)
             }
             .disabled(text.isEmpty || disableSend)
         }

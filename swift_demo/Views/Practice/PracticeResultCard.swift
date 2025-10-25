@@ -55,7 +55,7 @@ struct PracticeResultCard: View {
                 .foregroundColor(.white)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 16)
-                .background(Color.blue)
+                .background(Color.georgianRed)
                 .cornerRadius(12)
             }
             .padding(.horizontal, 24)

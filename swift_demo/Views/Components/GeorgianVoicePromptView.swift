@@ -38,7 +38,7 @@ public struct GeorgianVoicePromptView: View {
                         .fontWeight(.semibold)
                         .frame(maxWidth: .infinity)
                         .padding()
-                        .background(Color.blue)
+                        .background(Color.georgianRed)
                         .foregroundColor(.white)
                         .cornerRadius(10)
                 }

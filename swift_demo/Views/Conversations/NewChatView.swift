@@ -59,7 +59,7 @@ struct NewChatView: View {
                             .padding()
                     }
                 }
-                .background(Color.blue)
+                .background(Color.georgianRed)
                 .foregroundColor(.white)
                 .cornerRadius(10)
                 .padding(.horizontal)

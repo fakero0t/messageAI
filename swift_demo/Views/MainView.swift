@@ -89,6 +89,7 @@ struct ProfileView: View {
                                 showingImageSource = true
                             }
                             .buttonStyle(.borderedProminent)
+                            .tint(.georgianRed)
                             
                             // Remove Photo button (only if has photo)
                             if currentUser?.profileImageUrl != nil {
@@ -172,42 +173,6 @@ struct ProfileView: View {
                     Text("Enable to access practice exercises and receive Georgian vocabulary suggestions while chatting")
                         .font(.caption)
                         .foregroundColor(.secondary)
-                }
-                
-                // Test Notifications Section
-                Section("Notifications") {
-                    Button(action: {
-                        NotificationService.shared.showMessageNotification(
-                            conversationId: "test-123",
-                            senderName: "Test User",
-                            messageText: "This is a test notification!",
-                            isGroup: false
-                        )
-                    }) {
-                        HStack {
-                            Spacer()
-                            Text("Test System Notification")
-                                .foregroundColor(.blue)
-                            Spacer()
-                        }
-                    }
-                    
-                    Button(action: {
-                        let notification = InAppNotification(
-                            conversationId: "test-123",
-                            senderName: "Test User",
-                            messageText: "This is a test in-app notification banner!",
-                            isGroup: false
-                        )
-                        InAppNotificationManager.shared.show(notification)
-                    }) {
-                        HStack {
-                            Spacer()
-                            Text("Test In-App Banner")
-                                .foregroundColor(.green)
-                            Spacer()
-                        }
-                    }
                 }
                 
                 // Logout Section

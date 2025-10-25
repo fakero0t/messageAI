@@ -49,11 +49,13 @@ struct swift_demoApp: App {
             if authViewModel.isInitializing {
                 // Show loading screen while checking authentication
                 LoadingView()
+                    .tint(.georgianRed)
             } else if authViewModel.isAuthenticated {
                 MainView()
                     .environmentObject(authViewModel)
                     .environmentObject(notificationService)
                     .environmentObject(inAppNotificationManager)
+                    .tint(.georgianRed)
                     .task {
                         // Request notification permissions
                         notificationService.requestAuthorization()
@@ -63,6 +65,7 @@ struct swift_demoApp: App {
                     }
             } else {
                 LoginView(viewModel: authViewModel)
+                    .tint(.georgianRed)
             }
         }
         .modelContainer(PersistenceController.shared.container)
@@ -95,11 +98,11 @@ struct LoadingView: View {
             VStack(spacing: 20) {
                 Image(systemName: "message.fill")
                     .font(.system(size: 80))
-                    .foregroundColor(.blue)
+                    .foregroundColor(.georgianRed)
                 
                 ProgressView()
                     .scaleEffect(1.5)
-                    .tint(.blue)
+                    .tint(.georgianRed)
                 
                 Text("Loading...")
                     .font(.headline)

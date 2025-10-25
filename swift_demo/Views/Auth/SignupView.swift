@@ -19,8 +19,8 @@ struct SignupView: View {
                 VStack(spacing: 10) {
                     Image(systemName: "person.crop.circle.fill.badge.plus")
                         .font(.system(size: 60))
-                        .foregroundColor(.blue)
-                    Text("Create Account")
+                        .foregroundColor(.georgianRed)
+                    Text("Welcome to KaiaaChat")
                         .font(.largeTitle)
                         .fontWeight(.bold)
                 }
@@ -105,7 +105,7 @@ struct SignupView: View {
                             .padding()
                     }
                 }
-                .background(Color.blue)
+                .background(Color.georgianRed)
                 .foregroundColor(.white)
                 .cornerRadius(10)
                 .padding(.horizontal)
@@ -116,7 +116,7 @@ struct SignupView: View {
                     dismiss()
                 }) {
                     Text("Already have an account? Login")
-                        .foregroundColor(.blue)
+                        .foregroundColor(.georgianRed)
                 }
                 .padding(.top, 10)
                 

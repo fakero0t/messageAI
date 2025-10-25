@@ -49,7 +49,7 @@ struct PracticeCompletionView: View {
                     .foregroundColor(.white)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 16)
-                    .background(Color.blue)
+                    .background(Color.georgianRed)
                     .cornerRadius(12)
                 }
                 
@@ -60,7 +60,7 @@ struct PracticeCompletionView: View {
                         Text("Restart This Batch")
                             .font(.system(size: 18, weight: .semibold))
                     }
-                    .foregroundColor(.blue)
+                    .foregroundColor(.georgianRed)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 16)
                     .background(Color(.systemGray6))

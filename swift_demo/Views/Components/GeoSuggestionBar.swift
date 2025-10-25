@@ -58,7 +58,7 @@ struct GeoSuggestionBar: View {
                     undoText = nil
                 }
                 .font(.system(size: 14, weight: .semibold))
-                .foregroundColor(.blue)
+                .foregroundColor(.georgianRed)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
@@ -497,7 +497,7 @@ struct EnglishSuggestionChip: View {
                 } label: {
                     Text("Use this")
                         .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(.blue)
+                        .foregroundColor(.georgianRed)
                 }
             }
         }

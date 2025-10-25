@@ -18,7 +18,7 @@ struct LoginView: View {
                 VStack(spacing: 10) {
                     Image(systemName: "message.fill")
                         .font(.system(size: 60))
-                        .foregroundColor(.blue)
+                        .foregroundColor(.georgianRed)
                     Text("Welcome Back")
                         .font(.largeTitle)
                         .fontWeight(.bold)
@@ -65,7 +65,7 @@ struct LoginView: View {
                             .padding()
                     }
                 }
-                .background(Color.blue)
+                .background(Color.georgianRed)
                 .foregroundColor(.white)
                 .cornerRadius(10)
                 .padding(.horizontal)
@@ -76,7 +76,7 @@ struct LoginView: View {
                     showSignup = true
                 }) {
                     Text("Don't have an account? Sign Up")
-                        .foregroundColor(.blue)
+                        .foregroundColor(.georgianRed)
                 }
                 .padding(.top, 10)
                 

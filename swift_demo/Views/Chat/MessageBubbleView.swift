@@ -213,7 +213,7 @@ struct MessageBubbleView: View {
         if message.status == .failed {
             return Color.red.opacity(0.7)
         }
-        return isFromCurrentUser ? Color.blue : Color(.systemGray5)
+        return isFromCurrentUser ? Color.georgianRed : Color(.systemGray5)
     }
     
     private var textColor: Color {
@@ -243,13 +243,13 @@ struct MessageBubbleView: View {
             .font(.caption2)
             .foregroundColor(.secondary)
         case .read:
-            // Double checkmark (blue) for read
+            // Double checkmark (Georgian red) for read
             HStack(spacing: 1) {
                 Image(systemName: "checkmark")
                 Image(systemName: "checkmark")
             }
             .font(.caption2)
-            .foregroundColor(.blue)
+            .foregroundColor(.georgianRed)
         case .failed:
             Image(systemName: "exclamationmark.circle.fill")
                 .font(.caption2)

@@ -82,7 +82,7 @@ struct PracticeQuestionCard: View {
                         .foregroundColor(.white)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 16)
-                        .background(Color.blue)
+                        .background(Color.georgianRed)
                         .cornerRadius(12)
                 }
                 .padding(.horizontal, 32)
@@ -130,7 +130,7 @@ struct OptionButton: View {
             }
             return .gray
         }
-        return isSelected ? .blue : .gray
+        return isSelected ? .georgianRed : .gray
     }
     
     private var backgroundColor: Color {
@@ -142,7 +142,7 @@ struct OptionButton: View {
             }
             return Color(.systemGray6)
         }
-        return isSelected ? Color.blue.opacity(0.1) : Color(.systemGray6)
+        return isSelected ? Color.georgianRed.opacity(0.1) : Color(.systemGray6)
     }
     
     private var borderColor: Color {
@@ -154,7 +154,7 @@ struct OptionButton: View {
             }
             return .clear
         }
-        return isSelected ? .blue : .clear
+        return isSelected ? .georgianRed : .clear
     }
     
     var body: some View {

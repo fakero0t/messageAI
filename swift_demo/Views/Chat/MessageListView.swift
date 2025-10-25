@@ -102,6 +102,7 @@ struct MessageListView: View {
                         .padding(.vertical, 8)
                     }
                 }
+                .scrollDismissesKeyboard(.interactively) // Swipe down to dismiss keyboard
                 .background(
                     // Full-screen gesture capture area
                     Color.clear
@@ -160,9 +161,10 @@ struct MessageListView: View {
                     scrollToBottom(proxy: proxy)
                 }
                 .onAppear {
-                    // Use Task to ensure layout is complete before scrolling
+                    // Scroll to bottom immediately when opening the chat
+                    // Use a small delay to ensure messages are laid out
                     Task {
-                        try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 second delay
+                        try? await Task.sleep(nanoseconds: 50_000_000) // 0.05 second delay
                         scrollToBottom(proxy: proxy, animated: false)
                     }
                 }

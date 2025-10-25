@@ -133,7 +133,7 @@ struct DefinitionErrorView: View {
                         .foregroundColor(.white)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 12)
-                        .background(Color.blue)
+                        .background(Color.georgianRed)
                         .cornerRadius(10)
                 }
                 .padding(.horizontal, 32)

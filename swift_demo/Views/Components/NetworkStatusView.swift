@@ -55,7 +55,7 @@ struct NetworkStatusView: View {
         case .good, .excellent:
             if queueService.queueCount > 0 {
                 Image(systemName: "arrow.up.circle")
-                    .foregroundColor(.blue)
+                    .foregroundColor(.georgianRed)
             }
         }
     }

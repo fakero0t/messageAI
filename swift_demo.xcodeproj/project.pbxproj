@@ -302,6 +302,8 @@
 				DEVELOPMENT_TEAM = 6LGJV6J4X3;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = KaiaaChat;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
 				INFOPLIST_KEY_NSCameraUsageDescription = "We need access to your camera to take photos for chats.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "We need access to your photo library to send images in chats.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -338,6 +340,8 @@
 				DEVELOPMENT_TEAM = 6LGJV6J4X3;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = KaiaaChat;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
 				INFOPLIST_KEY_NSCameraUsageDescription = "We need access to your camera to take photos for chats.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "We need access to your photo library to send images in chats.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;

@@ -44,7 +44,7 @@ struct GroupInfoView: View {
                             ForEach(participants) { participant in
                                 HStack {
                                     Circle()
-                                        .fill(Color.blue)
+                                        .fill(Color.georgianRed)
                                         .frame(width: 40, height: 40)
                                         .overlay {
                                             Text(participant.displayName.prefix(1).uppercased())

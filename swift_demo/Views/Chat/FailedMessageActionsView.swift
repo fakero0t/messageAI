@@ -16,7 +16,7 @@ struct FailedMessageActionsView: View {
             Button(action: onRetry) {
                 Label("Retry", systemImage: "arrow.clockwise")
                     .font(.caption)
-                    .foregroundColor(.blue)
+                    .foregroundColor(.georgianRed)
             }
             .buttonStyle(.borderless)
             

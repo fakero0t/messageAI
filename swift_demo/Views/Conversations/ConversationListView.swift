@@ -9,9 +9,15 @@ import SwiftUI
 
 struct ConversationListView: View {
     @StateObject private var viewModel = ConversationListViewModel()
+    @ObservedObject private var authService = AuthenticationService.shared
     @State private var showNewChat = false
     @State private var pendingNavigation: PendingNavigation?
     @Binding var conversationToNavigateTo: String?
+    
+    // Access current user to check Georgian Learning Mode
+    private var currentUser: User? {
+        authService.currentUser
+    }
 
     struct PendingNavigation: Identifiable, Hashable {
         let id = UUID()
@@ -69,6 +75,14 @@ struct ConversationListView: View {
                 )
             }
             .toolbar {
+                // Custom title with Georgian flag when in learning mode
+                if currentUser?.georgianLearningMode == true {
+                    ToolbarItem(placement: .principal) {
+                        Text("🇬🇪")
+                            .font(.title)
+                    }
+                }
+                
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         showNewChat = true
@@ -129,7 +143,7 @@ struct ConversationListView: View {
                 Label("New Chat", systemImage: "square.and.pencil")
                     .padding(.horizontal, 20)
                     .padding(.vertical, 12)
-                    .background(Color.blue)
+                    .background(Color.georgianRed)
                     .foregroundColor(.white)
                     .cornerRadius(10)
             }
