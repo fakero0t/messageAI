@@ -14,39 +14,27 @@ A modern real-time messaging app built with SwiftUI and Firebase.
 - ✅ Crash recovery
 - ✅ Message retry on failure
 
-### Rich Media **[NEW]**
+### Rich Media
 - ✅ Image messages (send/receive)
 - ✅ Profile pictures
 - ✅ Image compression (~1MB)
 - ✅ Progressive image loading
-- ✅ Full-screen image viewer with zoom & pan
 - ✅ Camera and photo library integration
 
 ### Real-Time Features
 - ✅ Online/offline presence indicators
 - ✅ Read receipts
-- ✅ Typing indicators **[NEW]**
+- ✅ Typing indicators
   - Shows who is typing in real-time
   - Smart formatting for multiple users
   - Auto-cleanup after 3 seconds
 - ✅ Message delivery states (sending, sent, delivered, read)
 
-### UI/UX
-- ✅ Avatar system with initials fallback **[NEW]**
-  - Profile pictures throughout the app
-  - Colored initials when no picture set
-  - Consistent per-user colors
-- ✅ Modern SwiftUI interface
-- ✅ Smooth animations and transitions
-- ✅ Dark mode support
-- ✅ Network status indicators
-- ✅ In-app notification banners
-
 ### Infrastructure
 - ✅ Firebase Authentication (Email/Password)
 - ✅ Firestore (messages/conversations)
-- ✅ Realtime Database (typing indicators) **[NEW]**
-- ✅ Firebase Storage (images & profile pictures) **[NEW]**
+- ✅ Realtime Database (typing indicators)
+- ✅ Firebase Storage (images & profile pictures)
 - ✅ Network resilience & auto-reconnect
 - ✅ Comprehensive error handling
 
@@ -155,37 +143,10 @@ swift_demo/
 - **Observer** (Combine publishers)
 - **Repository** (Service layer)
 
-## 🧪 Testing
-
-### Run Tests
-```bash
-# All tests
-xcodebuild test -scheme swift_demo \
-  -destination 'platform=iOS Simulator,name=iPhone 15'
-
-# Specific test class
-xcodebuild test -scheme swift_demo \
-  -only-testing:swift_demoTests/TypingServiceTests
-
-# Test script (includes build)
-./run_tests.sh
-```
-
-### Test Coverage
-- ✅ **TypingService** - 17 tests (debouncing, timeouts, formatting)
-- ✅ **ImageUploadService** - 14 tests (upload, progress, cancellation)
-- ✅ **ImageUtils** - 14 tests (compression, resizing, file management)
-- ✅ **MessageQueue** - 8 tests (offline queueing, retry logic)
-- ✅ **NetworkMonitor** - 6 tests (connectivity detection)
-- ✅ **DateFormatting** - 5 tests (time formatting)
-
-See [TEST_SUITE_SUMMARY.md](TEST_SUITE_SUMMARY.md) for details.
-
 ## 📚 Documentation
 
 - **[FIREBASE_SETUP.md](FIREBASE_SETUP.md)** - Complete Firebase configuration guide
 - **[FEATURES.md](FEATURES.md)** - Detailed feature documentation
-- **[TEST_COVERAGE.md](TEST_COVERAGE.md)** - Testing overview
 - **[tasks_v2_*.md](tasks_v2_1.md)** - Development task breakdown
 
 ## 🔒 Security
@@ -255,9 +216,6 @@ cd swift_demo
 open swift_demo.xcodeproj
 
 # Configure Firebase (see FIREBASE_SETUP.md)
-
-# Run tests
-./run_tests.sh
 ```
 
 ### Code Style
@@ -276,12 +234,6 @@ open swift_demo.xcodeproj
 ## 📝 License
 
 This project is for educational purposes.
-
-## 🙏 Acknowledgments
-
-- Firebase for backend infrastructure
-- SwiftUI for modern UI development
-- The Swift community for excellent tooling and resources
 
 ## 📧 Support
 
